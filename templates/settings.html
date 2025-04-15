@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>詳細設定 - デルニューシステム</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8 max-w-3xl">
+        <h1 class="text-4xl font-bold mb-8 text-center">詳細設定</h1>
+        
+        <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-8">
+            <h2 class="text-2xl font-semibold mb-6 text-center">API設定</h2>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="api_key">
+                    APIキー
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="api_key" type="text" placeholder="APIキー">
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="api_secret">
+                    APIシークレット
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="api_secret" type="password" placeholder="APIシークレット">
+            </div>
+            <div class="mb-4">
+                <label class="flex items-center">
+                    <input type="checkbox" class="form-checkbox" id="testnet">
+                    <span class="ml-2">開発者モードを使用</span>
+                </label>
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="usdt_balance">
+                    USDT残高
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="usdt_balance" type="text" readonly>
+            </div>
+            <div class="flex items-center justify-between">
+                <button id="updateConfig" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 ease-in-out transform hover:scale-105">
+                    設定を更新
+                </button>
+            </div>
+        </div>
+
+        <div class="text-center mt-8">
+            <a href="/dashboard" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full text-lg transition duration-300 ease-in-out transform hover:scale-105">
+                ダッシュボードに戻る
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const apiKeyInput = document.getElementById('api_key');
+        const apiSecretInput = document.getElementById('api_secret');
+        const testnetCheckbox = document.getElementById('testnet');
+        const usdtBalanceInput = document.getElementById('usdt_balance');
+        const updateConfigButton = document.getElementById('updateConfig');
+
+        function updateConfig() {
+            const apiKey = apiKeyInput.value;
+            const apiSecret = apiSecretInput.value;
+            const testnet = testnetCheckbox.checked;
+
+            fetch('/update_api_keys', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    api_key: apiKey, 
+                    api_secret: apiSecret,
+                    testnet: testnet
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('設定が正常に更新されました');
+                    updateUSDTBalance();
+                } else {
+                    alert('設定の更新に失敗しました: ' + data.error);
+                }
+            });
+        }
+
+        function updateUSDTBalance() {
+            fetch('/get_usdt_balance')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        usdtBalanceInput.value = data.usdt_balance;
+                    } else {
+                        console.error('USDT残高の取得に失敗しました:', data.error);
+                    }
+                })
+                .catch(error => console.error('USDT残高の更新中にエラーが発生しました:', error));
+        }
+
+        updateConfigButton.addEventListener('click', updateConfig);
+
+        // 5秒ごとにUSDT残高を更新
+        setInterval(updateUSDTBalance, 5000);
+
+        // ページロード時に設定を取得
+        window.addEventListener('load', function() {
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(data => {
+                    apiKeyInput.value = data.api_key;
+                    apiSecretInput.value = data.api_secret;
+                    testnetCheckbox.checked = data.testnet;
+                    usdtBalanceInput.value = data.usdt_balance;
+                });
+            
+            // 初回USDT残高更新
+            updateUSDTBalance();
+        });
+    </script>
+</body>
+</html>

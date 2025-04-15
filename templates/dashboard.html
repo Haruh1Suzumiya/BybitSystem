@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bybitデルニューシステム</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #333;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div id="app" class="container mx-auto px-4 py-8 max-w-4xl">
+        <div class="bg-gray-800 text-white rounded-t-lg p-6 mb-8">
+            <h1 class="text-4xl font-bold text-center">システム管理画面</h1>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8">
+                <h2 class="text-2xl font-semibold mb-6 text-center">システム制御</h2>
+                <div class="flex items-center justify-center">
+                    <span class="mr-4 text-lg">実行:</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggleArbitrage">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="ml-4 text-lg font-semibold" id="arbitrageStatus">停止中</span>
+                </div>
+            </div>
+
+            <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8">
+                <h2 class="text-2xl font-semibold mb-6 text-center">USDT残高</h2>
+                <p id="usdtBalance" class="text-3xl font-bold text-center">読み込み中...</p>
+            </div>
+        </div>
+
+        <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-8">
+            <h2 class="text-2xl font-semibold mb-6 text-center">システム状況</h2>
+            <p id="status" class="text-lg text-center mb-4">実行されていません</p>
+            <div id="logContainer" class="bg-gray-100 p-4 rounded-lg h-64 overflow-y-auto">
+                <pre id="logs" class="text-sm whitespace-pre-wrap"></pre>
+            </div>
+        </div>
+
+        <div class="text-center mt-8">
+            <a href="/settings" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full text-lg transition duration-300 ease-in-out transform hover:scale-105">
+                詳細設定
+            </a>
+        </div>
+    </div>
+
+    <!-- 停止確認モーダル -->
+    <div id="stopConfirmationModal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                                システムを停止しますか？
+                            </h3>
+                            <div class="mt-2">
+                                <p class="text-sm text-gray-500">
+                                    システムを停止すると、現在のポジションが全てクローズされます。本当に停止しますか？
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" id="confirmStop" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        停止
+                    </button>
+                    <button type="button" id="cancelStop" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        キャンセル
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const toggleArbitrageButton = document.getElementById('toggleArbitrage');
+        const arbitrageStatus = document.getElementById('arbitrageStatus');
+        const status = document.getElementById('status');
+        const usdtBalanceElement = document.getElementById('usdtBalance');
+        const logsElement = document.getElementById('logs');
+        const stopConfirmationModal = document.getElementById('stopConfirmationModal');
+        const confirmStopButton = document.getElementById('confirmStop');
+        const cancelStopButton = document.getElementById('cancelStop');
+    
+        let isArbitrageRunning = false;
+    
+        function updateUSDTBalance() {
+            fetch('/get_usdt_balance')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        usdtBalanceElement.textContent = `${data.usdt_balance} USDT`;
+                    } else {
+                        console.error('Failed to get USDT balance:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating USDT balance:', error);
+                });
+        }
+    
+        function log(message) {
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString();
+            logsElement.innerHTML += `[${timestamp}] ${message}<br>`;
+            logsElement.scrollTop = logsElement.scrollHeight;
+        }
+    
+        function updateArbitrageStatus() {
+            fetch('/arbitrage_status')
+                .then(response => response.json())
+                .then(data => {
+                    status.textContent = data.status;
+                    isArbitrageRunning = data.is_running;
+                    toggleArbitrageButton.checked = isArbitrageRunning;
+                    arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
+                    if (data.logs && data.logs.length > 0) {
+                        logsElement.innerHTML = ''; // Clear existing logs
+                        data.logs.forEach(message => {
+                            const now = new Date();
+                            const timestamp = now.toLocaleTimeString();
+                            logsElement.innerHTML += `[${timestamp}] ${message}<br>`;
+                        });
+                        logsElement.scrollTop = logsElement.scrollHeight;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating arbitrage status:', error);
+                });
+        }
+    
+        function showStopConfirmationModal() {
+            stopConfirmationModal.classList.remove('hidden');
+        }
+    
+        function hideStopConfirmationModal() {
+            stopConfirmationModal.classList.add('hidden');
+        }
+    
+        function startArbitrage() {
+            fetch('/toggle_arbitrage/start', { method: 'POST' })
+                .then(response => response.json())
+                .then(handleArbitrageResponse)
+                .catch(handleArbitrageError);
+        }
+    
+        function stopArbitrage() {
+            fetch('/toggle_arbitrage/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(handleArbitrageResponse)
+                .catch(handleArbitrageError);
+        }
+    
+        function handleArbitrageResponse(data) {
+            if (data.success) {
+                isArbitrageRunning = data.is_running;
+                arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
+                toggleArbitrageButton.checked = isArbitrageRunning;
+                log(data.message);
+                updateArbitrageStatus();
+                if (isArbitrageRunning) {
+                    updateUSDTBalance();
+                }
+            } else {
+                console.error('Failed to toggle arbitrage:', data.message);
+                toggleArbitrageButton.checked = !toggleArbitrageButton.checked;
+            }
+        }
+    
+        function handleArbitrageError(error) {
+            console.error('Error toggling arbitrage:', error);
+            toggleArbitrageButton.checked = isArbitrageRunning;
+        }
+    
+        toggleArbitrageButton.addEventListener('change', function() {
+            if (this.checked) {
+                startArbitrage();
+            } else {
+                showStopConfirmationModal();
+            }
+        });
+    
+        confirmStopButton.addEventListener('click', function() {
+            hideStopConfirmationModal();
+            stopArbitrage();
+        });
+    
+        cancelStopButton.addEventListener('click', function() {
+            hideStopConfirmationModal();
+            toggleArbitrageButton.checked = true;
+        });
+    
+        // 1分ごとにUSDT残高を更新
+        setInterval(updateUSDTBalance, 60000);
+    
+        // 5秒ごとにアービトラージ状態を更新
+        setInterval(updateArbitrageStatus, 5000);
+    
+        // 初期状態を更新
+        updateArbitrageStatus();
+        updateUSDTBalance();
+    </script>
+</body>
+</html>

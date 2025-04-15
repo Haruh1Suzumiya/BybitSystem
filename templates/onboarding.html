@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bybitデルニューシステム - 初期設定</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #333;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div id="app" class="container mx-auto px-4 py-8 max-w-4xl">
+        <div class="bg-gray-800 text-white rounded-t-lg p-6 mb-8">
+            <h1 class="text-4xl font-bold text-center">システム初期設定</h1>
+        </div>
+        
+        <div id="onboarding" class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8">
+            <div class="onboarding-step" data-step="1">
+                <h2 class="text-2xl font-semibold mb-6 text-center">ようこそ</h2>
+                <p class="mb-4 text-center">このシステムは、Bybit間のFR金利を使用したデルニューシステムです</p>
+                <div class="text-center">
+                    <button class="next-step bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">
+                        開始する
+                    </button>
+                </div>
+            </div>
+            
+            <div class="onboarding-step hidden" data-step="2">
+                <h2 class="text-2xl font-semibold mb-6 text-center">API設定</h2>
+                <p class="mb-4 text-center">Bybit APIキーとシークレットを入力してください。</p>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="api_key">APIキー (必須)</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="api_key" type="text" placeholder="APIキー" required>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="api_secret">APIシークレット (必須)</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="api_secret" type="password" placeholder="APIシークレット" required>
+                </div>
+                <div class="mb-4 flex items-center justify-center">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="developer_mode">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="ml-3 text-gray-700 font-medium">
+                        開発者モード（テストネット）
+                    </span>
+                </div>
+                <div class="text-center">
+                    <button class="next-step bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">
+                        次へ
+                    </button>
+                </div>
+            </div>
+            
+            <div class="onboarding-step hidden" data-step="3">
+                <h2 class="text-2xl font-semibold mb-6 text-center">設定完了</h2>
+                <p class="mb-4 text-center">APIキーの設定が完了しました。</p>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="usdt_balance">USDT残高</label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="usdt_balance" type="text" readonly>
+                </div>
+                <div class="text-center">
+                    <button id="finish-onboarding" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">
+                        始める
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const onboarding = document.getElementById('onboarding');
+        const steps = document.querySelectorAll('.onboarding-step');
+        let currentStep = 0;
+
+        function showStep(step) {
+            steps.forEach((s, index) => {
+                if (index === step) {
+                    s.classList.remove('hidden');
+                } else {
+                    s.classList.add('hidden');
+                }
+            });
+        }
+
+        document.querySelectorAll('.next-step').forEach(button => {
+            button.addEventListener('click', () => {
+                const currentStepElement = steps[currentStep];
+                const apiKey = currentStepElement.querySelector('#api_key');
+                const apiSecret = currentStepElement.querySelector('#api_secret');
+
+                if (apiKey && apiSecret) {
+                    if (!apiKey.value || !apiSecret.value) {
+                        alert('APIキーとAPIシークレットは必須です。');
+                        return;
+                    }
+
+                    // APIキーとシークレットが入力されたら、USDT残高を取得
+                    const developerMode = document.getElementById('developer_mode').checked;
+                    fetch('/update_api_keys', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            api_key: apiKey.value, 
+                            api_secret: apiSecret.value,
+                            testnet: developerMode
+                        }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            document.getElementById('usdt_balance').value = data.usdt_balance;
+                            currentStep++;
+                            showStep(currentStep);
+                        } else {
+                            alert('APIキーの設定に失敗しました。もう一度お試しください。');
+                        }
+                    });
+                } else {
+                    currentStep++;
+                    showStep(currentStep);
+                }
+            });
+        });
+
+        document.getElementById('finish-onboarding').addEventListener('click', () => {
+            window.location.href = '/dashboard';
+        });
+
+        // 初期ステップを表示
+        showStep(currentStep);
+    </script>
+</body>
+</html>
