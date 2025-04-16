@@ -375,7 +375,7 @@ def execute_arbitrage(config, opportunity):
         max_retry = 3  # 最大再試行回数
         retry_count = 0
         
-        while actual_spot_qty < float(spot_qty) * 0.95 and retry_count < max_retry:  # 5%の許容範囲
+        while actual_spot_qty < float(spot_qty) * 0.97 and retry_count < max_retry:  # 5%の許容範囲
             missing_qty = float(spot_qty) - actual_spot_qty
             if missing_qty > 0:
                 log_message(f"Spot quantity mismatch. Got: {actual_spot_qty}, Expected: {spot_qty}. Placing additional order for {missing_qty}")
@@ -741,7 +741,7 @@ def check_position_balance(config):
                         break
         
         # 差分が5%以上ある場合は調整
-        if spot_qty < futures_qty * 0.95:
+        if spot_qty < futures_qty * 0.97:
             missing_qty = futures_qty - spot_qty
             log_message(f"Position imbalance detected: Futures {futures_qty}, Spot {spot_qty}. Missing: {missing_qty}")
             
@@ -757,7 +757,7 @@ def check_position_balance(config):
                 spot_qty_step = Decimal(spot_info['lotSizeFilter'].get('basePrecision', '0.000001'))
                 
                 # 最小注文価値（多くの取引所では5-10 USDT程度）
-                min_order_value = 5.0  # 5 USDT を最小注文価値と仮定
+                min_order_value = 10.0  # 5 USDT を最小注文価値と仮定
                 
                 # 注文数量を調整
                 adjusted_qty = Decimal(str(missing_qty))
@@ -816,7 +816,7 @@ def check_position_balance(config):
                                 log_message(f"Error adjusting order quantity: {str(e)}")
                 else:
                     log_message(f"Missing quantity too small for adjustment: {adjusted_qty} < {spot_min_order_qty}")
-        elif futures_qty < spot_qty * 0.95:
+        elif futures_qty < spot_qty * 0.97:
             # 現物が先物より多い場合はクローズ時に適切に処理されるので何もしない
             log_message(f"Spot position exceeds futures position: Futures {futures_qty}, Spot {spot_qty}")
     

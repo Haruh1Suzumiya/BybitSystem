@@ -124,15 +124,6 @@
                     </label>
                     <input class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="api_secret" type="password" placeholder="APIシークレットを入力" required>
                 </div>
-                <div class="mb-6 flex items-center justify-center">
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="developer_mode" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <span class="ml-3 text-gray-700 font-medium">
-                        テストネットモード（実際の資金は使用しません）
-                    </span>
-                </div>
                 <div class="flex items-center justify-between">
                     <button class="prev-step bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out">
                         戻る
@@ -155,10 +146,6 @@
                     <p class="text-gray-600 mt-2">システムを使用する準備が整いました。</p>
                 </div>
                 <div class="bg-gray-100 rounded-lg p-4 mb-6">
-                    <div class="flex justify-between mb-2">
-                        <span class="text-gray-700">APIモード:</span>
-                        <span class="font-medium" id="api_mode">テストネット</span>
-                    </div>
                     <div class="flex justify-between">
                         <span class="text-gray-700">USDT残高:</span>
                         <span class="font-medium" id="usdt_balance">読み込み中...</span>
@@ -250,16 +237,13 @@
                     apiErrorElement.classList.add('hidden');
                     
                     // APIキーとシークレットが入力されたら、USDT残高を取得
-                    const developerMode = document.getElementById('developer_mode').checked;
-                    document.getElementById('api_mode').textContent = developerMode ? 'テストネット' : '本番環境';
-                    
                     fetch('/update_api_keys', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             api_key: apiKey, 
                             api_secret: apiSecret,
-                            testnet: developerMode
+                            testnet: false // テストネットモードをfalseに固定
                         }),
                     })
                     .then(response => response.json())
