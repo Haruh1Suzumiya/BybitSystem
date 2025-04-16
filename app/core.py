@@ -671,12 +671,8 @@ def check_current_position(config):
         if ticker['retCode'] == 0 and 'fundingRate' in ticker['result']['list'][0]:
             new_fr = float(ticker['result']['list'][0]['fundingRate']) * 100  # パーセント表示
             
-            # FRカウントを増やす
-            current_position['fr_change_count'] += 1
+            # FRを更新
             current_position['fr'] = new_fr
-            
-            # 更新したポジション情報をconfig.iniに保存
-            save_position_to_config(current_position)
             
             # 累積FRを計算
             cumulative_fr = calculate_cumulative_fr(session, current_position['linear_symbol'])
@@ -689,9 +685,6 @@ def check_current_position(config):
                 close_current_position(config)
             else:
                 log_message(f"Keeping current position. FR: {new_fr:.4f}%")
-                
-                # ポジションの整合性をチェック（スポットと先物の数量差を確認）
-                check_position_balance(config)
         else:
             log_message(f"Failed to get funding rate for {current_position['linear_symbol']}")
     
@@ -699,7 +692,9 @@ def check_current_position(config):
         log_message(f"Error checking position: {str(e)}")
 
 def check_position_balance(config):
-    """スポットと先物のポジションバランスをチェックして調整"""
+    """スポットと先物のポジションバランスをチェックして調整
+    （初回ポジション開設時と組み替え時のみ実行）
+    """
     global current_position
     
     # ポジションがない場合は何もしない
@@ -741,7 +736,7 @@ def check_position_balance(config):
                         break
         
         # 差分が5%以上ある場合は調整
-        if spot_qty < futures_qty * 0.97:
+        if spot_qty < futures_qty * 0.95:
             missing_qty = futures_qty - spot_qty
             log_message(f"Position imbalance detected: Futures {futures_qty}, Spot {spot_qty}. Missing: {missing_qty}")
             
@@ -757,7 +752,7 @@ def check_position_balance(config):
                 spot_qty_step = Decimal(spot_info['lotSizeFilter'].get('basePrecision', '0.000001'))
                 
                 # 最小注文価値（多くの取引所では5-10 USDT程度）
-                min_order_value = 10.0  # 5 USDT を最小注文価値と仮定
+                min_order_value = 10.0  # 10 USDT を最小注文価値と仮定
                 
                 # 注文数量を調整
                 adjusted_qty = Decimal(str(missing_qty))
@@ -790,7 +785,6 @@ def check_position_balance(config):
                         
                         # エラーメッセージから最小注文価値を推測して再調整
                         if "Order value exceeded lower limit" in spot_order['retMsg']:
-                            # エラーメッセージから必要な最小価値を抽出（可能であれば）
                             try:
                                 import re
                                 match = re.search(r'lower limit is (\d+\.?\d*)', spot_order['retMsg'])
@@ -816,7 +810,7 @@ def check_position_balance(config):
                                 log_message(f"Error adjusting order quantity: {str(e)}")
                 else:
                     log_message(f"Missing quantity too small for adjustment: {adjusted_qty} < {spot_min_order_qty}")
-        elif futures_qty < spot_qty * 0.97:
+        elif futures_qty < spot_qty * 0.95:
             # 現物が先物より多い場合はクローズ時に適切に処理されるので何もしない
             log_message(f"Spot position exceeds futures position: Futures {futures_qty}, Spot {spot_qty}")
     
@@ -855,12 +849,36 @@ def arbitrage_loop(config):
     load_position_from_config()
     
     while is_arbitrage_running.is_set():
-        # 現在のポジションをチェック
-        if current_position['coin']:
-            check_current_position(config)
+        # 次のFR時間までの待機時間を計算
+        wait_time, next_fr_time = get_next_funding_time(config)
         
-        # 新しいポジションを開く（現在ポジションがない場合のみ）
-        if not current_position['coin']:
+        # ポジションがある場合
+        if current_position['coin']:
+            # FR変換時にポジションチェック
+            log_message(f"Waiting for {wait_time:.2f} seconds until next funding time at {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # 待機
+            start_time = time.time()
+            while time.time() - start_time < wait_time and is_arbitrage_running.is_set():
+                time.sleep(1)
+            
+            # FR変換時間になったらチェック（システムが実行中であれば）
+            if is_arbitrage_running.is_set():
+                log_message(f"Funding time reached: {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                # FR更新カウントを増やす
+                current_position['fr_change_count'] += 1
+                # 更新したポジション情報をconfig.iniに保存
+                save_position_to_config(current_position)
+                # ポジションチェック
+                check_current_position(config)
+                
+                # 組み替え後に新しいポジションが開設された場合、ポジションバランスをチェック
+                if current_position['coin'] and current_position['fr_change_count'] == 1:
+                    log_message("New position opened after FR change, checking balance")
+                    check_position_balance(config)
+        
+        # ポジションがない場合は新しいポジションを開く
+        else:
             # 上位の機会を取得
             opportunities = get_top_arbitrage_opportunities(config, top_n=3)
             
@@ -881,22 +899,22 @@ def arbitrage_loop(config):
                     
                     if execute_arbitrage(config, opp):
                         executed = True
+                        
+                        # 初回ポジション作成後にポジションバランスをチェック
+                        log_message("Initial position opened, checking balance")
+                        check_position_balance(config)
                         break
                 
                 if not executed:
                     log_message("Failed to execute arbitrage for all opportunities")
-        
-        # 次のFR時間まで待機
-        wait_time, next_fr_time = get_next_funding_time(config)
-        log_message(f"Waiting for {wait_time:.2f} seconds until next funding time at {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        # 待機しながら、一定間隔でポジションチェック
-        start_time = time.time()
-        while time.time() - start_time < wait_time and is_arbitrage_running.is_set():
-            # 10分ごとにポジションチェック
-            if current_position['coin'] and (time.time() - start_time) % 600 < 1:
-                check_current_position(config)
-            time.sleep(1)
+                    
+                    # 次のFR時間まで待機
+                    log_message(f"Waiting for {wait_time:.2f} seconds until next funding time at {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # 待機
+                    start_time = time.time()
+                    while time.time() - start_time < wait_time and is_arbitrage_running.is_set():
+                        time.sleep(1)
     
     # ループ終了時にポジションをクローズ
     if current_position['coin']:
