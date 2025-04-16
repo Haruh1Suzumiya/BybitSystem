@@ -92,10 +92,13 @@ def toggle_arbitrage(action):
 @main_bp.route('/arbitrage_status')
 def arbitrage_status():
     """アービトラージのステータスとログを取得"""
+    # 最新の状態のみを返す（ログは最小限に）
+    latest_logs = core.logs[-10:] if len(core.logs) > 0 else []
+    
     return jsonify({
         'is_running': core.is_arbitrage_running.is_set(),
         'status': '実行中' if core.is_arbitrage_running.is_set() else '停止中',
-        'logs': core.logs,
+        'logs': latest_logs,
         'position': {
             'has_position': bool(core.current_position['coin']),
             'coin': core.current_position['coin'],

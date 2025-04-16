@@ -146,6 +146,14 @@ def simplify_message(message):
     elif "Arbitrage loop ended" in message:
         return "🛑 アービトラージループ終了"
     
+    # 数量の不一致
+    elif "Spot quantity mismatch" in message:
+        return f"⚠️ {message}"
+    
+    # 追加注文
+    elif "Additional spot order" in message:
+        return f"➕ {message}"
+    
     return None  # シンプル化が不要なメッセージ
 
 def get_instrument_info(session, category, symbol):
@@ -283,7 +291,7 @@ def execute_arbitrage(config, opportunity):
         usdt_balance = float(usdt_balance)
         
         # 取引額を決定 (残高の40%ずつを使用、合計80%まで)
-        trade_amount_per_side = usdt_balance * 0.4
+        trade_amount_per_side = usdt_balance * 0.48
         
         # 先物側の数量計算 (USDTを先物価格で割る)
         futures_qty = Decimal(str(trade_amount_per_side)) / Decimal(str(futures_price))
@@ -302,6 +310,11 @@ def execute_arbitrage(config, opportunity):
         # 実際の注文価値を計算（チェック用）
         spot_order_value = float(spot_qty) * spot_price
         futures_order_value = float(futures_qty) * futures_price
+        
+        min_order_value = 10.0
+        if spot_order_value < min_order_value:
+            log_message(f"Spot order value too small: {spot_order_value:.2f} USDT < {min_order_value} USDT")
+            return False
         
         log_message(f"Placing market orders for {spot_symbol} and {linear_symbol}")
         log_message(f"Order details - Qty: {spot_qty}, Spot Value: {spot_order_value:.2f} USDT, Futures Value: {futures_order_value:.2f} USDT")
@@ -341,13 +354,118 @@ def execute_arbitrage(config, opportunity):
             )
             return False
         
+        # 注文が確定するまで少し待機
+        time.sleep(2)
+        
+        # 現物の実際の残高を確認
+        coin_balance_result = session.get_wallet_balance(
+            accountType="UNIFIED",
+            coin=spot_symbol.replace('USDT', '')
+        )
+        
+        actual_spot_qty = 0
+        if coin_balance_result['retCode'] == 0:
+            for coin_info in coin_balance_result['result']['list']:
+                for coin in coin_info['coin']:
+                    if coin['coin'] == spot_symbol.replace('USDT', ''):
+                        actual_spot_qty = float(coin['walletBalance'])
+                        break
+        
+        # 現物数量が先物数量と一致しない場合、追加注文を試みる
+        max_retry = 3  # 最大再試行回数
+        retry_count = 0
+        
+        while actual_spot_qty < float(spot_qty) * 0.95 and retry_count < max_retry:  # 5%の許容範囲
+            missing_qty = float(spot_qty) - actual_spot_qty
+            if missing_qty > 0:
+                log_message(f"Spot quantity mismatch. Got: {actual_spot_qty}, Expected: {spot_qty}. Placing additional order for {missing_qty}")
+                
+                # 追加注文の価値を計算
+                additional_order_value = missing_qty * spot_price
+                
+                # 最小注文量と注文ステップを考慮
+                adjusted_missing_qty = (Decimal(str(missing_qty)) / linear_qty_step).quantize(Decimal('1'), rounding=ROUND_DOWN) * linear_qty_step
+                
+                # 最小注文価値をチェック
+                if additional_order_value < min_order_value:
+                    # 最小注文価値を満たす量に調整
+                    min_qty_for_value = Decimal(str(min_order_value / spot_price))
+                    adjusted_missing_qty = max(
+                        linear_min_order_qty,
+                        (min_qty_for_value / linear_qty_step).quantize(Decimal('1'), rounding=ROUND_DOWN) * linear_qty_step
+                    )
+                    log_message(f"Adjusting order to meet minimum value: {float(adjusted_missing_qty) * spot_price:.2f} USDT")
+                
+                # 追加注文が小さすぎる場合はスキップ
+                if adjusted_missing_qty < linear_min_order_qty:
+                    log_message(f"Missing quantity too small for additional order: {adjusted_missing_qty} < {linear_min_order_qty}")
+                    break
+                
+                additional_spot_order = session.place_order(
+                    category="spot",
+                    symbol=spot_symbol,
+                    side="Buy",
+                    orderType="Market",
+                    qty=str(adjusted_missing_qty)
+                )
+                
+                if additional_spot_order['retCode'] != 0:
+                    log_message(f"Failed to place additional spot order: {additional_spot_order['retMsg']}")
+                    
+                    # 特定のエラーメッセージに基づいて対応
+                    if "Order value exceeded lower limit" in additional_spot_order['retMsg']:
+                        import re
+                        match = re.search(r'lower limit is (\d+\.?\d*)', additional_spot_order['retMsg'])
+                        if match:
+                            min_limit = float(match.group(1))
+                            new_qty = Decimal(str(min_limit / spot_price))
+                            better_qty = max(linear_min_order_qty, 
+                                            (new_qty / linear_qty_step).quantize(Decimal('1'), rounding=ROUND_DOWN) * linear_qty_step)
+                            
+                            log_message(f"Retrying with quantity to meet exchange minimum: {better_qty}")
+                            retry_order = session.place_order(
+                                category="spot",
+                                symbol=spot_symbol,
+                                side="Buy",
+                                orderType="Market",
+                                qty=str(better_qty)
+                            )
+                            
+                            if retry_order['retCode'] == 0:
+                                log_message(f"Additional order with adjusted qty successful")
+                            else:
+                                log_message(f"Still failed after adjustment: {retry_order['retMsg']}")
+                else:
+                    log_message(f"Additional spot order placed successfully for {adjusted_missing_qty}")
+                    
+                    # 再度残高を確認
+                    time.sleep(2)
+                    updated_balance = session.get_wallet_balance(
+                        accountType="UNIFIED",
+                        coin=spot_symbol.replace('USDT', '')
+                    )
+                    
+                    if updated_balance['retCode'] == 0:
+                        for coin_info in updated_balance['result']['list']:
+                            for coin in coin_info['coin']:
+                                if coin['coin'] == spot_symbol.replace('USDT', ''):
+                                    actual_spot_qty = float(coin['walletBalance'])
+                                    break
+                    
+                    log_message(f"Updated spot quantity: {actual_spot_qty}")
+            
+            retry_count += 1
+        
+        # 最終的な現物数量と先物数量を表示
+        log_message(f"Final position - Futures: {futures_qty}, Spot: {actual_spot_qty}")
+        
         # 注文の確認
         if futures_order['retCode'] == 0 and spot_order['retCode'] == 0:
             log_message(f"Successfully opened new position: {linear_symbol}/{spot_symbol}")
             
             # ポジション情報を更新
             current_position['coin'] = spot_symbol.replace('USDT', '')
-            current_position['qty'] = str(spot_qty)
+            current_position['qty'] = str(spot_qty)  # 理想的な数量を保存
             current_position['linear_symbol'] = linear_symbol
             current_position['spot_symbol'] = spot_symbol
             current_position['fr'] = current_fr
@@ -453,6 +571,9 @@ def close_current_position(config):
                     else:
                         log_message(f"Failed to close futures position: {futures_close_order['retMsg']}")
         
+        # 少し待機して確実に注文が処理されるようにする
+        time.sleep(2)
+        
         # 現物の残高を確認して売却
         coin_balance_result = session.get_wallet_balance(
             accountType="UNIFIED",
@@ -491,6 +612,22 @@ def close_current_position(config):
                                     log_message(f"Successfully sold spot position for {current_position['spot_symbol']}")
                                 else:
                                     log_message(f"Failed to sell spot position: {spot_sell_order['retMsg']}")
+                                    
+                                    # 再試行（分割して売却）
+                                    if spot_sell_order['retMsg'] and "insufficient balance" in spot_sell_order['retMsg'].lower():
+                                        # 残高の90%で再試行
+                                        retry_qty = (sell_qty * Decimal('0.9')).quantize(Decimal(str(spot_qty_step)), rounding=ROUND_DOWN)
+                                        if retry_qty >= spot_min_order_qty:
+                                            log_message(f"Retrying with smaller quantity: {retry_qty}")
+                                            retry_order = session.place_order(
+                                                category="spot",
+                                                symbol=current_position['spot_symbol'],
+                                                side="Sell",
+                                                orderType="Market",
+                                                qty=str(retry_qty)
+                                            )
+                                            if retry_order['retCode'] == 0:
+                                                log_message(f"Successfully sold partial spot position: {retry_qty}")
                             else:
                                 log_message(f"Spot position too small to sell: {sell_qty} < {spot_min_order_qty}")
         else:
@@ -546,21 +683,145 @@ def check_current_position(config):
             
             log_message(f"Current pair {current_position['linear_symbol']}/{current_position['spot_symbol']} - FR: {new_fr:.4f}%, Cumulative FR: {cumulative_fr:.4f}%")
             
-            # FR < 0.01%になったらポジションをクローズ
-            if new_fr < 0.01:
-                log_message(f"Closing current position due to FR < 0.01%")
-                close_current_position(config)
             # FRが負になったら即座にクローズ
-            elif new_fr < 0:
+            if new_fr < 0:
                 log_message(f"Closing current position due to negative FR: {new_fr:.4f}%")
                 close_current_position(config)
             else:
                 log_message(f"Keeping current position. FR: {new_fr:.4f}%")
+                
+                # ポジションの整合性をチェック（スポットと先物の数量差を確認）
+                check_position_balance(config)
         else:
             log_message(f"Failed to get funding rate for {current_position['linear_symbol']}")
     
     except Exception as e:
         log_message(f"Error checking position: {str(e)}")
+
+def check_position_balance(config):
+    """スポットと先物のポジションバランスをチェックして調整"""
+    global current_position
+    
+    # ポジションがない場合は何もしない
+    if not current_position['coin']:
+        return
+    
+    session = get_session(config)
+    
+    try:
+        # 先物ポジションを確認
+        futures_positions = session.get_positions(
+            category="linear",
+            symbol=current_position['linear_symbol']
+        )
+        
+        futures_qty = 0
+        if futures_positions['retCode'] == 0 and len(futures_positions['result']['list']) > 0:
+            for position in futures_positions['result']['list']:
+                if position['side'] == 'Sell':  # 売りポジションを確認
+                    futures_qty = float(position['size'])
+                    break
+        
+        if futures_qty <= 0:
+            log_message(f"No futures position found for {current_position['linear_symbol']}")
+            return
+        
+        # 現物残高を確認
+        coin_balance_result = session.get_wallet_balance(
+            accountType="UNIFIED",
+            coin=current_position['coin']
+        )
+        
+        spot_qty = 0
+        if coin_balance_result['retCode'] == 0:
+            for coin_info in coin_balance_result['result']['list']:
+                for coin in coin_info['coin']:
+                    if coin['coin'] == current_position['coin']:
+                        spot_qty = float(coin['walletBalance'])
+                        break
+        
+        # 差分が5%以上ある場合は調整
+        if spot_qty < futures_qty * 0.95:
+            missing_qty = futures_qty - spot_qty
+            log_message(f"Position imbalance detected: Futures {futures_qty}, Spot {spot_qty}. Missing: {missing_qty}")
+            
+            # 現在の価格を取得して最小注文価値を確認
+            spot_ticker = session.get_tickers(category="spot", symbol=current_position['spot_symbol'])
+            spot_price = float(spot_ticker['result']['list'][0]['lastPrice'])
+            
+            # 現物の銘柄情報を取得
+            spot_info = get_instrument_info(session, "spot", current_position['spot_symbol'])
+            
+            if spot_info:
+                spot_min_order_qty = Decimal(spot_info['lotSizeFilter']['minOrderQty'])
+                spot_qty_step = Decimal(spot_info['lotSizeFilter'].get('basePrecision', '0.000001'))
+                
+                # 最小注文価値（多くの取引所では5-10 USDT程度）
+                min_order_value = 5.0  # 5 USDT を最小注文価値と仮定
+                
+                # 注文数量を調整
+                adjusted_qty = Decimal(str(missing_qty))
+                adjusted_qty = (adjusted_qty / spot_qty_step).quantize(Decimal('1'), rounding=ROUND_DOWN) * spot_qty_step
+                
+                # 注文価値を計算
+                order_value = float(adjusted_qty) * spot_price
+                
+                # 注文価値が最小価値未満なら、最小価値になるよう数量を調整
+                if order_value < min_order_value:
+                    new_qty = Decimal(str(min_order_value / spot_price))
+                    adjusted_qty = max(spot_min_order_qty, (new_qty / spot_qty_step).quantize(Decimal('1'), rounding=ROUND_DOWN) * spot_qty_step)
+                    log_message(f"Adjusted order quantity to meet minimum value: from {missing_qty} to {adjusted_qty}")
+                
+                # 最小注文量を超えていれば追加注文
+                if adjusted_qty >= spot_min_order_qty:
+                    log_message(f"Balancing position: Adding spot position {adjusted_qty} to match futures")
+                    spot_order = session.place_order(
+                        category="spot",
+                        symbol=current_position['spot_symbol'],
+                        side="Buy",
+                        orderType="Market",
+                        qty=str(adjusted_qty)
+                    )
+                    
+                    if spot_order['retCode'] == 0:
+                        log_message(f"Successfully balanced position with additional spot order")
+                    else:
+                        log_message(f"Failed to balance position: {spot_order['retMsg']}")
+                        
+                        # エラーメッセージから最小注文価値を推測して再調整
+                        if "Order value exceeded lower limit" in spot_order['retMsg']:
+                            # エラーメッセージから必要な最小価値を抽出（可能であれば）
+                            try:
+                                import re
+                                match = re.search(r'lower limit is (\d+\.?\d*)', spot_order['retMsg'])
+                                if match:
+                                    min_limit = float(match.group(1))
+                                    new_qty = Decimal(str(min_limit / spot_price))
+                                    adjusted_qty = max(spot_min_order_qty, (new_qty / spot_qty_step).quantize(Decimal('1'), rounding=ROUND_DOWN) * spot_qty_step)
+                                    
+                                    log_message(f"Retrying with adjusted quantity to meet minimum value: {adjusted_qty}")
+                                    retry_order = session.place_order(
+                                        category="spot",
+                                        symbol=current_position['spot_symbol'],
+                                        side="Buy",
+                                        orderType="Market",
+                                        qty=str(adjusted_qty)
+                                    )
+                                    
+                                    if retry_order['retCode'] == 0:
+                                        log_message(f"Successfully balanced position on retry")
+                                    else:
+                                        log_message(f"Failed to balance position on retry: {retry_order['retMsg']}")
+                            except Exception as e:
+                                log_message(f"Error adjusting order quantity: {str(e)}")
+                else:
+                    log_message(f"Missing quantity too small for adjustment: {adjusted_qty} < {spot_min_order_qty}")
+        elif futures_qty < spot_qty * 0.95:
+            # 現物が先物より多い場合はクローズ時に適切に処理されるので何もしない
+            log_message(f"Spot position exceeds futures position: Futures {futures_qty}, Spot {spot_qty}")
+    
+    except Exception as e:
+        log_message(f"Error checking position balance: {str(e)}")
 
 def get_next_funding_time(config):
     """次のFunding時間までの待機時間を計算"""

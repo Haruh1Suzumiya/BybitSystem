@@ -55,6 +55,9 @@
             transform: translateY(-5px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
+        .status-indicator {
+            transition: all 0.5s ease;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -105,17 +108,47 @@
             </div>
         </div>
         
-        <!-- システムログ -->
+        <!-- システム状態 -->
         <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">システムログ</h2>
+                <h2 class="text-xl font-semibold">システム状態</h2>
                 <div class="flex items-center">
                     <span class="mr-2 text-gray-600">ステータス:</span>
-                    <span id="status" class="px-3 py-1 rounded-full text-white bg-gray-500">準備完了</span>
+                    <span id="status" class="px-3 py-1 rounded-full text-white bg-gray-500 status-indicator">準備完了</span>
                 </div>
             </div>
-            <div id="logContainer" class="bg-gray-100 p-4 rounded-lg h-64 overflow-y-auto border border-gray-200">
-                <div id="logs" class="text-sm space-y-1"></div>
+            <div class="flex flex-col items-center justify-center">
+                <div id="statusContainer" class="w-full flex justify-center">
+                    <div class="flex items-center justify-between w-4/5 max-w-2xl">
+                        <div class="flex flex-col items-center">
+                            <div id="step1" class="rounded-full h-12 w-12 flex items-center justify-center bg-gray-300 text-white mb-2">
+                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <span class="text-sm text-gray-500">FR解析中</span>
+                        </div>
+                        <div class="h-1 w-24 bg-gray-300" id="line1"></div>
+                        <div class="flex flex-col items-center">
+                            <div id="step2" class="rounded-full h-12 w-12 flex items-center justify-center bg-gray-300 text-white mb-2">
+                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <span class="text-sm text-gray-500">ポジション発注</span>
+                        </div>
+                        <div class="h-1 w-24 bg-gray-300" id="line2"></div>
+                        <div class="flex flex-col items-center">
+                            <div id="step3" class="rounded-full h-12 w-12 flex items-center justify-center bg-gray-300 text-white mb-2">
+                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            </div>
+                            <span class="text-sm text-gray-500">正常完了</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="statusMessage" class="mt-4 text-lg font-medium text-center">システム停止中</div>
             </div>
         </div>
         
@@ -191,7 +224,6 @@
         const status = document.getElementById('status');
         const usdtBalanceElement = document.getElementById('usdtBalance');
         const balanceUpdateTimeElement = document.getElementById('balanceUpdateTime');
-        const logsElement = document.getElementById('logs');
         const stopConfirmationModal = document.getElementById('stopConfirmationModal');
         const confirmStopButton = document.getElementById('confirmStop');
         const cancelStopButton = document.getElementById('cancelStop');
@@ -202,9 +234,59 @@
         const positionSymbolElement = document.getElementById('positionSymbol');
         const positionFRElement = document.getElementById('positionFR');
         const frChangeCountElement = document.getElementById('frChangeCount');
+        const statusMessageElement = document.getElementById('statusMessage');
+        
+        // ステータスステップの要素
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const step3 = document.getElementById('step3');
+        const line1 = document.getElementById('line1');
+        const line2 = document.getElementById('line2');
     
         let isArbitrageRunning = false;
         let currentLogs = [];
+        let processingStep = 0; // 現在の処理ステップ（0: 未開始, 1: FR解析中, 2: ポジション発注, 3: 正常完了）
+        
+        // ステータス表示を更新する関数
+        function updateStatusDisplay(step, message) {
+            processingStep = step;
+            
+            // すべてのステップをリセット
+            [step1, step2, step3].forEach(stepElem => {
+                stepElem.classList.remove('bg-blue-600', 'bg-green-500', 'bg-yellow-500');
+                stepElem.classList.add('bg-gray-300');
+            });
+            
+            [line1, line2].forEach(lineElem => {
+                lineElem.classList.remove('bg-blue-600', 'bg-green-500');
+                lineElem.classList.add('bg-gray-300');
+            });
+            
+            // 現在のステップまで強調表示
+            if (step >= 1) {
+                step1.classList.remove('bg-gray-300');
+                step1.classList.add('bg-blue-600');
+            }
+            
+            if (step >= 2) {
+                line1.classList.remove('bg-gray-300');
+                line1.classList.add('bg-blue-600');
+                step2.classList.remove('bg-gray-300');
+                step2.classList.add('bg-yellow-500');
+            }
+            
+            if (step >= 3) {
+                line2.classList.remove('bg-gray-300');
+                line2.classList.add('bg-green-500');
+                step2.classList.remove('bg-yellow-500');
+                step2.classList.add('bg-blue-600');
+                step3.classList.remove('bg-gray-300');
+                step3.classList.add('bg-green-500');
+            }
+            
+            // ステータスメッセージを更新
+            statusMessageElement.textContent = message;
+        }
     
         function updateUSDTBalance() {
             fetch('/get_usdt_balance')
@@ -222,37 +304,6 @@
                 });
         }
     
-        function addLog(message) {
-            const now = new Date();
-            const timestamp = now.toLocaleTimeString();
-            const logItem = document.createElement('div');
-            logItem.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
-            logsElement.appendChild(logItem);
-            
-            // スクロールを最下部に保持
-            const logContainer = document.getElementById('logContainer');
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
-    
-        function updateLogs(newLogs) {
-            // ログに変更があるか確認
-            if (JSON.stringify(newLogs) !== JSON.stringify(currentLogs)) {
-                currentLogs = newLogs;
-                
-                // ログを更新
-                logsElement.innerHTML = '';
-                newLogs.forEach(message => {
-                    const logItem = document.createElement('div');
-                    logItem.innerHTML = message;
-                    logsElement.appendChild(logItem);
-                });
-                
-                // スクロールを最下部に保持
-                const logContainer = document.getElementById('logContainer');
-                logContainer.scrollTop = logContainer.scrollHeight;
-            }
-        }
-    
         function updatePositionInfo(position) {
             if (position.has_position) {
                 noPositionElement.classList.add('hidden');
@@ -261,9 +312,19 @@
                 positionSymbolElement.textContent = `${position.linear_symbol || '-'}`;
                 positionFRElement.textContent = position.fr !== null ? `${position.fr.toFixed(4)}%` : '-';
                 frChangeCountElement.textContent = position.fr_change_count || '0';
+                
+                // ポジションがある場合は処理ステップを3に設定
+                updateStatusDisplay(3, `ポジション保有中: ${position.linear_symbol}`);
             } else {
                 noPositionElement.classList.remove('hidden');
                 hasPositionElement.classList.add('hidden');
+                
+                // システムが実行中なら解析中表示に戻す
+                if (isArbitrageRunning) {
+                    updateStatusDisplay(1, "FR解析中");
+                } else {
+                    updateStatusDisplay(0, "システム停止中");
+                }
             }
         }
     
@@ -273,16 +334,37 @@
                 .then(data => {
                     // ステータスを更新
                     status.textContent = data.status;
-                    status.className = `px-3 py-1 rounded-full text-white ${data.is_running ? 'bg-green-500' : 'bg-gray-500'}`;
+                    status.className = `px-3 py-1 rounded-full text-white ${data.is_running ? 'bg-green-500' : 'bg-gray-500'} status-indicator`;
                     
                     // トグルボタンを更新
                     isArbitrageRunning = data.is_running;
                     toggleArbitrageButton.checked = isArbitrageRunning;
                     arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
                     
-                    // ログを更新
-                    if (data.logs && data.logs.length > 0) {
-                        updateLogs(data.logs);
+                    // ログメッセージからステータスを判断
+                    if (isArbitrageRunning) {
+                        if (!data.position.has_position) {
+                            // ポジションがない場合は解析中
+                            updateStatusDisplay(1, "FR解析中");
+                            
+                            // ログを確認して処理状態を判定
+                            if (data.logs && data.logs.length > 0) {
+                                for (let i = data.logs.length - 1; i >= 0; i--) {
+                                    const log = data.logs[i];
+                                    
+                                    if (log.includes("試行:") || log.includes("Attempting arbitrage:")) {
+                                        updateStatusDisplay(2, "ポジション発注中");
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            // ポジションがある場合は完了状態
+                            updateStatusDisplay(3, `ポジション保有中: ${data.position.linear_symbol}`);
+                        }
+                    } else {
+                        // 停止中
+                        updateStatusDisplay(0, "システム停止中");
                     }
                     
                     // ポジション情報を更新
@@ -360,38 +442,52 @@
         function startArbitrage() {
             fetch('/toggle_arbitrage/start', { method: 'POST' })
                 .then(response => response.json())
-                .then(handleArbitrageResponse)
-                .catch(handleArbitrageError);
+                .then(data => {
+                    if (data.success) {
+                        isArbitrageRunning = data.is_running;
+                        arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
+                        toggleArbitrageButton.checked = isArbitrageRunning;
+                        
+                        if (isArbitrageRunning) {
+                            updateStatusDisplay(1, "FR解析中");
+                            updateUSDTBalance();
+                        }
+                        
+                        updateArbitrageStatus();
+                    } else {
+                        console.error('Failed to toggle arbitrage:', data.message);
+                        toggleArbitrageButton.checked = !toggleArbitrageButton.checked;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error toggling arbitrage:', error);
+                    toggleArbitrageButton.checked = isArbitrageRunning;
+                });
         }
     
         function stopArbitrage() {
             fetch('/toggle_arbitrage/stop', { method: 'POST' })
                 .then(response => response.json())
-                .then(handleArbitrageResponse)
-                .catch(handleArbitrageError);
-        }
-    
-        function handleArbitrageResponse(data) {
-            if (data.success) {
-                isArbitrageRunning = data.is_running;
-                arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
-                toggleArbitrageButton.checked = isArbitrageRunning;
-                addLog(data.message);
-                updateArbitrageStatus();
-                if (isArbitrageRunning) {
-                    updateUSDTBalance();
-                }
-            } else {
-                console.error('Failed to toggle arbitrage:', data.message);
-                addLog(`エラー: ${data.message}`);
-                toggleArbitrageButton.checked = !toggleArbitrageButton.checked;
-            }
-        }
-    
-        function handleArbitrageError(error) {
-            console.error('Error toggling arbitrage:', error);
-            addLog(`システムエラーが発生しました`);
-            toggleArbitrageButton.checked = isArbitrageRunning;
+                .then(data => {
+                    if (data.success) {
+                        isArbitrageRunning = data.is_running;
+                        arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
+                        toggleArbitrageButton.checked = isArbitrageRunning;
+                        
+                        if (!isArbitrageRunning) {
+                            updateStatusDisplay(0, "システム停止中");
+                        }
+                        
+                        updateArbitrageStatus();
+                    } else {
+                        console.error('Failed to toggle arbitrage:', data.message);
+                        toggleArbitrageButton.checked = !toggleArbitrageButton.checked;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error toggling arbitrage:', error);
+                    toggleArbitrageButton.checked = isArbitrageRunning;
+                });
         }
     
         // イベントリスナー設定
@@ -427,7 +523,7 @@
             updateArbitrageStatus();
             updateUSDTBalance();
             loadOpportunities();
-            addLog('システム準備完了');
+            updateStatusDisplay(0, "システム停止中");
         });
     </script>
 </body>
