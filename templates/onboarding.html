@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bybitデルニューシステム - 初期設定</title>
+    <title>Bybitデルタニュートラル - 初期設定</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
         .toggle-switch {
@@ -40,67 +40,133 @@
             border-radius: 50%;
         }
         input:checked + .toggle-slider {
-            background-color: #333;
+            background-color: #2563eb;
+        }
+        input:focus + .toggle-slider {
+            box-shadow: 0 0 1px #2563eb;
         }
         input:checked + .toggle-slider:before {
             transform: translateX(26px);
         }
+        .step-container {
+            transition: all 0.5s ease;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
-    <div id="app" class="container mx-auto px-4 py-8 max-w-4xl">
-        <div class="bg-gray-800 text-white rounded-t-lg p-6 mb-8">
-            <h1 class="text-4xl font-bold text-center">システム初期設定</h1>
+    <div id="app" class="container mx-auto px-4 py-8 max-w-3xl">
+        <div class="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-t-lg p-6 mb-0">
+            <h1 class="text-4xl font-bold text-center">デルタニュートラル初期設定</h1>
+            <p class="text-center text-blue-100 mt-2">Bybit FRアービトラージシステム</p>
         </div>
         
-        <div id="onboarding" class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8">
-            <div class="onboarding-step" data-step="1">
+        <div id="onboarding" class="bg-white shadow-lg rounded-b-lg px-8 pt-6 pb-8">
+            <!-- ステップインジケーター -->
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center">
+                    <div class="rounded-full h-8 w-8 flex items-center justify-center bg-blue-600 text-white font-bold">1</div>
+                    <div class="ml-2 font-medium text-blue-600">ようこそ</div>
+                </div>
+                <div class="h-1 w-16 bg-gray-300 step-line" id="line1"></div>
+                <div class="flex items-center">
+                    <div class="rounded-full h-8 w-8 flex items-center justify-center bg-gray-300 text-gray-600 font-bold" id="step2-circle">2</div>
+                    <div class="ml-2 font-medium text-gray-400" id="step2-text">API設定</div>
+                </div>
+                <div class="h-1 w-16 bg-gray-300 step-line" id="line2"></div>
+                <div class="flex items-center">
+                    <div class="rounded-full h-8 w-8 flex items-center justify-center bg-gray-300 text-gray-600 font-bold" id="step3-circle">3</div>
+                    <div class="ml-2 font-medium text-gray-400" id="step3-text">完了</div>
+                </div>
+            </div>
+            
+            <!-- ステップ1: ようこそ -->
+            <div class="step-container" data-step="1">
                 <h2 class="text-2xl font-semibold mb-6 text-center">ようこそ</h2>
-                <p class="mb-4 text-center">このシステムは、Bybit間のFR金利を使用したデルニューシステムです</p>
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
+                    <p class="text-blue-700">
+                        このシステムは、Bybit取引所の現物と先物間のFunding Rate (FR) を利用したデルタニュートラル戦略を自動化するツールです。
+                    </p>
+                </div>
+                <p class="mb-4">
+                    <strong>主な特徴:</strong>
+                </p>
+                <ul class="list-disc pl-5 mb-6 space-y-2">
+                    <li>累積FRが高い通貨ペアを自動選定</li>
+                    <li>現物買い/先物売りポジションの自動執行</li>
+                    <li>定期的なFRチェックとポジション管理</li>
+                    <li>リアルタイムのステータス表示</li>
+                </ul>
+                <p class="mb-6 text-gray-600">
+                    始めるには、Bybit APIキーの設定が必要です。
+                </p>
                 <div class="text-center">
-                    <button class="next-step bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">
+                    <button class="next-step bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
                         開始する
                     </button>
                 </div>
             </div>
             
-            <div class="onboarding-step hidden" data-step="2">
+            <!-- ステップ2: API設定 -->
+            <div class="step-container hidden" data-step="2">
                 <h2 class="text-2xl font-semibold mb-6 text-center">API設定</h2>
-                <p class="mb-4 text-center">Bybit APIキーとシークレットを入力してください。</p>
+                <p class="mb-6 text-center text-gray-600">
+                    Bybit APIキーとシークレットを入力してください。取引に使用されるため、<span class="text-red-600 font-semibold">必ず取引権限を付与したAPIキー</span>を使用してください。
+                </p>
                 <div class="mb-4">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="api_key">APIキー (必須)</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="api_key" type="text" placeholder="APIキー" required>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="api_key">
+                        APIキー <span class="text-red-600">*</span>
+                    </label>
+                    <input class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="api_key" type="text" placeholder="APIキーを入力" required>
                 </div>
-                <div class="mb-4">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="api_secret">APIシークレット (必須)</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="api_secret" type="password" placeholder="APIシークレット" required>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="api_secret">
+                        APIシークレット <span class="text-red-600">*</span>
+                    </label>
+                    <input class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="api_secret" type="password" placeholder="APIシークレットを入力" required>
                 </div>
-                <div class="mb-4 flex items-center justify-center">
+                <div class="mb-6 flex items-center justify-center">
                     <label class="toggle-switch">
-                        <input type="checkbox" id="developer_mode">
+                        <input type="checkbox" id="developer_mode" checked>
                         <span class="toggle-slider"></span>
                     </label>
                     <span class="ml-3 text-gray-700 font-medium">
-                        開発者モード（テストネット）
+                        テストネットモード（実際の資金は使用しません）
                     </span>
                 </div>
-                <div class="text-center">
-                    <button class="next-step bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">
+                <div class="flex items-center justify-between">
+                    <button class="prev-step bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out">
+                        戻る
+                    </button>
+                    <button class="next-step bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out">
                         次へ
                     </button>
                 </div>
+                <div id="api-error" class="mt-4 text-red-600 text-center hidden"></div>
             </div>
             
-            <div class="onboarding-step hidden" data-step="3">
+            <!-- ステップ3: 設定完了 -->
+            <div class="step-container hidden" data-step="3">
                 <h2 class="text-2xl font-semibold mb-6 text-center">設定完了</h2>
-                <p class="mb-4 text-center">APIキーの設定が完了しました。</p>
-                <div class="mb-4">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="usdt_balance">USDT残高</label>
-                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="usdt_balance" type="text" readonly>
+                <div class="text-center mb-6">
+                    <svg class="mx-auto h-16 w-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <p class="text-xl font-medium text-gray-900 mt-4">APIキーの設定が完了しました</p>
+                    <p class="text-gray-600 mt-2">システムを使用する準備が整いました。</p>
+                </div>
+                <div class="bg-gray-100 rounded-lg p-4 mb-6">
+                    <div class="flex justify-between mb-2">
+                        <span class="text-gray-700">APIモード:</span>
+                        <span class="font-medium" id="api_mode">テストネット</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-700">USDT残高:</span>
+                        <span class="font-medium" id="usdt_balance">読み込み中...</span>
+                    </div>
                 </div>
                 <div class="text-center">
-                    <button id="finish-onboarding" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out transform hover:scale-105">
-                        始める
+                    <button id="finish-onboarding" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+                        ダッシュボードへ
                     </button>
                 </div>
             </div>
@@ -108,10 +174,13 @@
     </div>
 
     <script>
+        // DOM要素
         const onboarding = document.getElementById('onboarding');
-        const steps = document.querySelectorAll('.onboarding-step');
+        const steps = document.querySelectorAll('.step-container');
+        const apiErrorElement = document.getElementById('api-error');
         let currentStep = 0;
 
+        // ステップ表示関数
         function showStep(step) {
             steps.forEach((s, index) => {
                 if (index === step) {
@@ -120,40 +189,94 @@
                     s.classList.add('hidden');
                 }
             });
+            
+            // プログレスインジケーターを更新
+            updateProgressIndicator(step);
+        }
+        
+        // プログレスインジケーター更新
+        function updateProgressIndicator(step) {
+            // ステップ2
+            if (step >= 1) {
+                document.getElementById('line1').classList.remove('bg-gray-300');
+                document.getElementById('line1').classList.add('bg-blue-600');
+                document.getElementById('step2-circle').classList.remove('bg-gray-300', 'text-gray-600');
+                document.getElementById('step2-circle').classList.add('bg-blue-600', 'text-white');
+                document.getElementById('step2-text').classList.remove('text-gray-400');
+                document.getElementById('step2-text').classList.add('text-blue-600');
+            } else {
+                document.getElementById('line1').classList.add('bg-gray-300');
+                document.getElementById('line1').classList.remove('bg-blue-600');
+                document.getElementById('step2-circle').classList.add('bg-gray-300', 'text-gray-600');
+                document.getElementById('step2-circle').classList.remove('bg-blue-600', 'text-white');
+                document.getElementById('step2-text').classList.add('text-gray-400');
+                document.getElementById('step2-text').classList.remove('text-blue-600');
+            }
+            
+            // ステップ3
+            if (step >= 2) {
+                document.getElementById('line2').classList.remove('bg-gray-300');
+                document.getElementById('line2').classList.add('bg-blue-600');
+                document.getElementById('step3-circle').classList.remove('bg-gray-300', 'text-gray-600');
+                document.getElementById('step3-circle').classList.add('bg-blue-600', 'text-white');
+                document.getElementById('step3-text').classList.remove('text-gray-400');
+                document.getElementById('step3-text').classList.add('text-blue-600');
+            } else {
+                document.getElementById('line2').classList.add('bg-gray-300');
+                document.getElementById('line2').classList.remove('bg-blue-600');
+                document.getElementById('step3-circle').classList.add('bg-gray-300', 'text-gray-600');
+                document.getElementById('step3-circle').classList.remove('bg-blue-600', 'text-white');
+                document.getElementById('step3-text').classList.add('text-gray-400');
+                document.getElementById('step3-text').classList.remove('text-blue-600');
+            }
         }
 
+        // 次へボタンイベント
         document.querySelectorAll('.next-step').forEach(button => {
             button.addEventListener('click', () => {
                 const currentStepElement = steps[currentStep];
-                const apiKey = currentStepElement.querySelector('#api_key');
-                const apiSecret = currentStepElement.querySelector('#api_secret');
-
-                if (apiKey && apiSecret) {
-                    if (!apiKey.value || !apiSecret.value) {
-                        alert('APIキーとAPIシークレットは必須です。');
+                
+                // API情報入力ステップの場合
+                if (currentStep === 1) {
+                    const apiKey = document.getElementById('api_key').value;
+                    const apiSecret = document.getElementById('api_secret').value;
+                    
+                    if (!apiKey || !apiSecret) {
+                        apiErrorElement.textContent = 'APIキーとAPIシークレットは必須です。';
+                        apiErrorElement.classList.remove('hidden');
                         return;
                     }
-
+                    
+                    apiErrorElement.classList.add('hidden');
+                    
                     // APIキーとシークレットが入力されたら、USDT残高を取得
                     const developerMode = document.getElementById('developer_mode').checked;
+                    document.getElementById('api_mode').textContent = developerMode ? 'テストネット' : '本番環境';
+                    
                     fetch('/update_api_keys', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            api_key: apiKey.value, 
-                            api_secret: apiSecret.value,
+                            api_key: apiKey, 
+                            api_secret: apiSecret,
                             testnet: developerMode
                         }),
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            document.getElementById('usdt_balance').value = data.usdt_balance;
+                            document.getElementById('usdt_balance').textContent = data.usdt_balance + ' USDT';
                             currentStep++;
                             showStep(currentStep);
                         } else {
-                            alert('APIキーの設定に失敗しました。もう一度お試しください。');
+                            apiErrorElement.textContent = 'APIキーの設定に失敗しました: ' + data.error;
+                            apiErrorElement.classList.remove('hidden');
                         }
+                    })
+                    .catch(error => {
+                        apiErrorElement.textContent = 'サーバーエラーが発生しました。';
+                        apiErrorElement.classList.remove('hidden');
+                        console.error('Error:', error);
                     });
                 } else {
                     currentStep++;
@@ -161,7 +284,18 @@
                 }
             });
         });
+        
+        // 戻るボタンイベント
+        document.querySelectorAll('.prev-step').forEach(button => {
+            button.addEventListener('click', () => {
+                if (currentStep > 0) {
+                    currentStep--;
+                    showStep(currentStep);
+                }
+            });
+        });
 
+        // 完了ボタンイベント
         document.getElementById('finish-onboarding').addEventListener('click', () => {
             window.location.href = '/dashboard';
         });

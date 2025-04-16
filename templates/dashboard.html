@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bybitデルニューシステム</title>
+    <title>Bybitデルタニュートラル - ダッシュボード</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
         .toggle-switch {
@@ -40,22 +40,34 @@
             border-radius: 50%;
         }
         input:checked + .toggle-slider {
-            background-color: #333;
+            background-color: #2563eb;
+        }
+        input:focus + .toggle-slider {
+            box-shadow: 0 0 1px #2563eb;
         }
         input:checked + .toggle-slider:before {
             transform: translateX(26px);
         }
+        .card {
+            transition: all 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
-    <div id="app" class="container mx-auto px-4 py-8 max-w-4xl">
-        <div class="bg-gray-800 text-white rounded-t-lg p-6 mb-8">
-            <h1 class="text-4xl font-bold text-center">システム管理画面</h1>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app" class="container mx-auto px-4 py-8 max-w-6xl">
+        <div class="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-lg p-6 mb-8 shadow-lg">
+            <h1 class="text-4xl font-bold text-center">デルタニュートラル管理画面</h1>
+            <p class="text-center mt-2 text-blue-100">Bybit FRアービトラージシステム</p>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-            <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8">
-                <h2 class="text-2xl font-semibold mb-6 text-center">システム制御</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- システム制御 -->
+            <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 card">
+                <h2 class="text-xl font-semibold mb-4 text-center">システム制御</h2>
                 <div class="flex items-center justify-center">
                     <span class="mr-4 text-lg">実行:</span>
                     <label class="toggle-switch">
@@ -66,22 +78,76 @@
                 </div>
             </div>
 
-            <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8">
-                <h2 class="text-2xl font-semibold mb-6 text-center">USDT残高</h2>
+            <!-- USDT残高 -->
+            <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 card">
+                <h2 class="text-xl font-semibold mb-4 text-center">USDT残高</h2>
                 <p id="usdtBalance" class="text-3xl font-bold text-center">読み込み中...</p>
+                <p class="text-center text-sm text-gray-500 mt-2">最終更新: <span id="balanceUpdateTime">-</span></p>
+            </div>
+            
+            <!-- 現在のポジション -->
+            <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 card">
+                <h2 class="text-xl font-semibold mb-4 text-center">現在のポジション</h2>
+                <div id="noPosition" class="text-center">
+                    <p class="text-gray-500">ポジションなし</p>
+                </div>
+                <div id="hasPosition" class="hidden">
+                    <p class="text-center font-bold text-xl" id="positionSymbol">-</p>
+                    <div class="flex justify-between mt-3">
+                        <span class="text-gray-600">現在FR:</span>
+                        <span class="font-semibold" id="positionFR">-</span>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-gray-600">FR更新回数:</span>
+                        <span class="font-semibold" id="frChangeCount">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- システムログ -->
+        <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">システムログ</h2>
+                <div class="flex items-center">
+                    <span class="mr-2 text-gray-600">ステータス:</span>
+                    <span id="status" class="px-3 py-1 rounded-full text-white bg-gray-500">準備完了</span>
+                </div>
+            </div>
+            <div id="logContainer" class="bg-gray-100 p-4 rounded-lg h-64 overflow-y-auto border border-gray-200">
+                <div id="logs" class="text-sm space-y-1"></div>
+            </div>
+        </div>
+        
+        <!-- 上位機会 -->
+        <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card">
+            <h2 class="text-xl font-semibold mb-4">上位FR機会</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ペア</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">現在FR</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">累積FR</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="opportunitiesTable">
+                        <tr>
+                            <td colspan="3" class="px-6 py-4 text-center text-gray-500">読み込み中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-right mt-4">
+                <button id="refreshOpportunities" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition duration-200">
+                    更新
+                </button>
             </div>
         </div>
 
-        <div class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-8">
-            <h2 class="text-2xl font-semibold mb-6 text-center">システム状況</h2>
-            <p id="status" class="text-lg text-center mb-4">実行されていません</p>
-            <div id="logContainer" class="bg-gray-100 p-4 rounded-lg h-64 overflow-y-auto">
-                <pre id="logs" class="text-sm whitespace-pre-wrap"></pre>
-            </div>
-        </div>
-
+        <!-- 設定リンク -->
         <div class="text-center mt-8">
-            <a href="/settings" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full text-lg transition duration-300 ease-in-out transform hover:scale-105">
+            <a href="/settings" class="inline-block bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full text-lg transition duration-300 ease-in-out transform hover:scale-105">
                 詳細設定
             </a>
         </div>
@@ -124,12 +190,21 @@
         const arbitrageStatus = document.getElementById('arbitrageStatus');
         const status = document.getElementById('status');
         const usdtBalanceElement = document.getElementById('usdtBalance');
+        const balanceUpdateTimeElement = document.getElementById('balanceUpdateTime');
         const logsElement = document.getElementById('logs');
         const stopConfirmationModal = document.getElementById('stopConfirmationModal');
         const confirmStopButton = document.getElementById('confirmStop');
         const cancelStopButton = document.getElementById('cancelStop');
+        const opportunitiesTable = document.getElementById('opportunitiesTable');
+        const refreshOpportunitiesButton = document.getElementById('refreshOpportunities');
+        const noPositionElement = document.getElementById('noPosition');
+        const hasPositionElement = document.getElementById('hasPosition');
+        const positionSymbolElement = document.getElementById('positionSymbol');
+        const positionFRElement = document.getElementById('positionFR');
+        const frChangeCountElement = document.getElementById('frChangeCount');
     
         let isArbitrageRunning = false;
+        let currentLogs = [];
     
         function updateUSDTBalance() {
             fetch('/get_usdt_balance')
@@ -137,6 +212,7 @@
                 .then(data => {
                     if (data.success) {
                         usdtBalanceElement.textContent = `${data.usdt_balance} USDT`;
+                        balanceUpdateTimeElement.textContent = new Date().toLocaleTimeString();
                     } else {
                         console.error('Failed to get USDT balance:', data.error);
                     }
@@ -146,33 +222,130 @@
                 });
         }
     
-        function log(message) {
+        function addLog(message) {
             const now = new Date();
             const timestamp = now.toLocaleTimeString();
-            logsElement.innerHTML += `[${timestamp}] ${message}<br>`;
-            logsElement.scrollTop = logsElement.scrollHeight;
+            const logItem = document.createElement('div');
+            logItem.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+            logsElement.appendChild(logItem);
+            
+            // スクロールを最下部に保持
+            const logContainer = document.getElementById('logContainer');
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    
+        function updateLogs(newLogs) {
+            // ログに変更があるか確認
+            if (JSON.stringify(newLogs) !== JSON.stringify(currentLogs)) {
+                currentLogs = newLogs;
+                
+                // ログを更新
+                logsElement.innerHTML = '';
+                newLogs.forEach(message => {
+                    const logItem = document.createElement('div');
+                    logItem.innerHTML = message;
+                    logsElement.appendChild(logItem);
+                });
+                
+                // スクロールを最下部に保持
+                const logContainer = document.getElementById('logContainer');
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
+    
+        function updatePositionInfo(position) {
+            if (position.has_position) {
+                noPositionElement.classList.add('hidden');
+                hasPositionElement.classList.remove('hidden');
+                
+                positionSymbolElement.textContent = `${position.linear_symbol || '-'}`;
+                positionFRElement.textContent = position.fr !== null ? `${position.fr.toFixed(4)}%` : '-';
+                frChangeCountElement.textContent = position.fr_change_count || '0';
+            } else {
+                noPositionElement.classList.remove('hidden');
+                hasPositionElement.classList.add('hidden');
+            }
         }
     
         function updateArbitrageStatus() {
             fetch('/arbitrage_status')
                 .then(response => response.json())
                 .then(data => {
+                    // ステータスを更新
                     status.textContent = data.status;
+                    status.className = `px-3 py-1 rounded-full text-white ${data.is_running ? 'bg-green-500' : 'bg-gray-500'}`;
+                    
+                    // トグルボタンを更新
                     isArbitrageRunning = data.is_running;
                     toggleArbitrageButton.checked = isArbitrageRunning;
                     arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
+                    
+                    // ログを更新
                     if (data.logs && data.logs.length > 0) {
-                        logsElement.innerHTML = ''; // Clear existing logs
-                        data.logs.forEach(message => {
-                            const now = new Date();
-                            const timestamp = now.toLocaleTimeString();
-                            logsElement.innerHTML += `[${timestamp}] ${message}<br>`;
-                        });
-                        logsElement.scrollTop = logsElement.scrollHeight;
+                        updateLogs(data.logs);
                     }
+                    
+                    // ポジション情報を更新
+                    updatePositionInfo(data.position);
                 })
                 .catch(error => {
                     console.error('Error updating arbitrage status:', error);
+                });
+        }
+    
+        function loadOpportunities() {
+            fetch('/get_top_opportunities')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.opportunities) {
+                        opportunitiesTable.innerHTML = '';
+                        
+                        if (data.opportunities.length === 0) {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `<td colspan="3" class="px-6 py-4 text-center text-gray-500">利用可能な機会がありません</td>`;
+                            opportunitiesTable.appendChild(row);
+                        } else {
+                            data.opportunities.forEach(opp => {
+                                const row = document.createElement('tr');
+                                row.className = 'hover:bg-gray-50';
+                                row.innerHTML = `
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="font-medium text-gray-900">${opp.linear_symbol}</div>
+                                        <div class="text-sm text-gray-500">${opp.spot_symbol}</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${opp.current_fr > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                            ${opp.current_fr.toFixed(4)}%
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${opp.cumulative_fr > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                            ${opp.cumulative_fr.toFixed(4)}%
+                                        </span>
+                                    </td>
+                                `;
+                                opportunitiesTable.appendChild(row);
+                            });
+                        }
+                    } else {
+                        opportunitiesTable.innerHTML = `
+                            <tr>
+                                <td colspan="3" class="px-6 py-4 text-center text-red-500">
+                                    データの取得に失敗しました
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading opportunities:', error);
+                    opportunitiesTable.innerHTML = `
+                        <tr>
+                            <td colspan="3" class="px-6 py-4 text-center text-red-500">
+                                エラーが発生しました
+                            </td>
+                        </tr>
+                    `;
                 });
         }
     
@@ -203,22 +376,25 @@
                 isArbitrageRunning = data.is_running;
                 arbitrageStatus.textContent = isArbitrageRunning ? '実行中' : '停止中';
                 toggleArbitrageButton.checked = isArbitrageRunning;
-                log(data.message);
+                addLog(data.message);
                 updateArbitrageStatus();
                 if (isArbitrageRunning) {
                     updateUSDTBalance();
                 }
             } else {
                 console.error('Failed to toggle arbitrage:', data.message);
+                addLog(`エラー: ${data.message}`);
                 toggleArbitrageButton.checked = !toggleArbitrageButton.checked;
             }
         }
     
         function handleArbitrageError(error) {
             console.error('Error toggling arbitrage:', error);
+            addLog(`システムエラーが発生しました`);
             toggleArbitrageButton.checked = isArbitrageRunning;
         }
     
+        // イベントリスナー設定
         toggleArbitrageButton.addEventListener('change', function() {
             if (this.checked) {
                 startArbitrage();
@@ -236,16 +412,23 @@
             hideStopConfirmationModal();
             toggleArbitrageButton.checked = true;
         });
+        
+        refreshOpportunitiesButton.addEventListener('click', function() {
+            loadOpportunities();
+        });
     
-        // 1分ごとにUSDT残高を更新
-        setInterval(updateUSDTBalance, 60000);
+        // 定期更新処理
+        setInterval(updateUSDTBalance, 60000);  // 1分ごとにUSDT残高を更新
+        setInterval(updateArbitrageStatus, 5000);  // 5秒ごとにステータスを更新
+        setInterval(loadOpportunities, 300000);  // 5分ごとに機会リストを更新
     
-        // 5秒ごとにアービトラージ状態を更新
-        setInterval(updateArbitrageStatus, 5000);
-    
-        // 初期状態を更新
-        updateArbitrageStatus();
-        updateUSDTBalance();
+        // 初期処理
+        document.addEventListener('DOMContentLoaded', function() {
+            updateArbitrageStatus();
+            updateUSDTBalance();
+            loadOpportunities();
+            addLog('システム準備完了');
+        });
     </script>
 </body>
 </html>
