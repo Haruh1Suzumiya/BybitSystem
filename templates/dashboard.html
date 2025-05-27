@@ -58,6 +58,10 @@
         .status-indicator {
             transition: all 0.5s ease;
         }
+        .zkj-highlight {
+            background: linear-gradient(45deg, #fef3c7, #fde68a);
+            border: 2px solid #f59e0b;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -79,6 +83,9 @@
                     </label>
                     <span class="ml-4 text-lg font-semibold" id="arbitrageStatus">停止中</span>
                 </div>
+                <div class="text-center mt-4">
+                    <p class="text-sm text-gray-600">対象ペア: <span class="font-bold text-blue-600">ZKJUSDT</span></p>
+                </div>
             </div>
 
             <!-- USDT残高 -->
@@ -93,9 +100,10 @@
                 <h2 class="text-xl font-semibold mb-4 text-center">現在のポジション</h2>
                 <div id="noPosition" class="text-center">
                     <p class="text-gray-500">ポジションなし</p>
+                    <p class="text-xs text-gray-400 mt-1">次回実行時: ZKJUSDT</p>
                 </div>
                 <div id="hasPosition" class="hidden">
-                    <p class="text-center font-bold text-xl" id="positionSymbol">-</p>
+                    <p class="text-center font-bold text-xl" id="positionSymbol">ZKJUSDT</p>
                     <div class="flex justify-between mt-3">
                         <span class="text-gray-600">現在FR:</span>
                         <span class="font-semibold" id="positionFR">-</span>
@@ -103,6 +111,9 @@
                     <div class="flex justify-between mt-1">
                         <span class="text-gray-600">FR更新回数:</span>
                         <span class="font-semibold" id="frChangeCount">-</span>
+                    </div>
+                    <div class="text-center mt-2">
+                        <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">永続保持</span>
                     </div>
                 </div>
             </div>
@@ -135,7 +146,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                 </svg>
                             </div>
-                            <span class="text-sm text-gray-500">ポジション発注</span>
+                            <span class="text-sm text-gray-500">ZKJUSDT発注</span>
                         </div>
                         <div class="h-1 w-24 bg-gray-300" id="line2"></div>
                         <div class="flex flex-col items-center">
@@ -144,7 +155,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                                 </svg>
                             </div>
-                            <span class="text-sm text-gray-500">正常完了</span>
+                            <span class="text-sm text-gray-500">保持中</span>
                         </div>
                     </div>
                 </div>
@@ -154,7 +165,7 @@
         
         <!-- 上位機会 -->
         <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card">
-            <h2 class="text-xl font-semibold mb-4">上位FR機会</h2>
+            <h2 class="text-xl font-semibold mb-4">上位FR機会 <span class="text-sm text-gray-500"></span></h2>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -162,11 +173,12 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ペア</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">現在FR</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">累積FR</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">実行対象</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200" id="opportunitiesTable">
                         <tr>
-                            <td colspan="3" class="px-6 py-4 text-center text-gray-500">読み込み中...</td>
+                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">読み込み中...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -199,9 +211,19 @@
                                 システムを停止しますか？
                             </h3>
                             <div class="mt-2">
-                                <p class="text-sm text-gray-500">
-                                    システムを停止すると、現在のポジションが全てクローズされます。本当に停止しますか？
+                                <p class="text-sm text-gray-500 mb-4">
+                                    停止方法を選択してください：
                                 </p>
+                                <div class="space-y-3">
+                                    <label class="flex items-center">
+                                        <input type="radio" name="stopOption" value="maintain" class="mr-2" checked>
+                                        <span class="text-sm">ポジション維持で停止（推奨）</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="radio" name="stopOption" value="close" class="mr-2">
+                                        <span class="text-sm text-red-600">全ポジションクローズして停止</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -309,12 +331,12 @@
                 noPositionElement.classList.add('hidden');
                 hasPositionElement.classList.remove('hidden');
                 
-                positionSymbolElement.textContent = `${position.linear_symbol || '-'}`;
+                positionSymbolElement.textContent = 'ZKJUSDT'; // 固定表示
                 positionFRElement.textContent = position.fr !== null ? `${position.fr.toFixed(4)}%` : '-';
                 frChangeCountElement.textContent = position.fr_change_count || '0';
                 
                 // ポジションがある場合は処理ステップを3に設定
-                updateStatusDisplay(3, `ポジション保有中: ${position.linear_symbol}`);
+                updateStatusDisplay(3, `ポジション保有中: ZKJUSDT`);
             } else {
                 noPositionElement.classList.remove('hidden');
                 hasPositionElement.classList.add('hidden');
@@ -353,14 +375,14 @@
                                     const log = data.logs[i];
                                     
                                     if (log.includes("試行:") || log.includes("Attempting arbitrage:")) {
-                                        updateStatusDisplay(2, "ポジション発注中");
+                                        updateStatusDisplay(2, "ZKJUSDT発注中");
                                         break;
                                     }
                                 }
                             }
                         } else {
                             // ポジションがある場合は完了状態
-                            updateStatusDisplay(3, `ポジション保有中: ${data.position.linear_symbol}`);
+                            updateStatusDisplay(3, `ポジション保有中: ZKJUSDT`);
                         }
                     } else {
                         // 停止中
@@ -384,15 +406,16 @@
                         
                         if (data.opportunities.length === 0) {
                             const row = document.createElement('tr');
-                            row.innerHTML = `<td colspan="3" class="px-6 py-4 text-center text-gray-500">利用可能な機会がありません</td>`;
+                            row.innerHTML = `<td colspan="4" class="px-6 py-4 text-center text-gray-500">利用可能な機会がありません</td>`;
                             opportunitiesTable.appendChild(row);
                         } else {
-                            data.opportunities.forEach(opp => {
+                            data.opportunities.forEach((opp, index) => {
                                 const row = document.createElement('tr');
-                                row.className = 'hover:bg-gray-50';
+                                const isZKJ = opp.linear_symbol === 'ZKJUSDT';
+                                row.className = `hover:bg-gray-50 ${isZKJ ? 'zkj-highlight' : ''}`;
                                 row.innerHTML = `
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="font-medium text-gray-900">${opp.linear_symbol}</div>
+                                        <div class="font-medium text-gray-900">${opp.linear_symbol} ${isZKJ ? '⭐' : ''}</div>
                                         <div class="text-sm text-gray-500">${opp.spot_symbol}</div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
@@ -405,6 +428,9 @@
                                             ${opp.cumulative_fr.toFixed(4)}%
                                         </span>
                                     </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-center">
+                                        ${isZKJ ? '<span class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full font-semibold">実行対象</span>' : '<span class="text-gray-400 text-xs">表示のみ</span>'}
+                                    </td>
                                 `;
                                 opportunitiesTable.appendChild(row);
                             });
@@ -412,7 +438,7 @@
                     } else {
                         opportunitiesTable.innerHTML = `
                             <tr>
-                                <td colspan="3" class="px-6 py-4 text-center text-red-500">
+                                <td colspan="4" class="px-6 py-4 text-center text-red-500">
                                     データの取得に失敗しました
                                 </td>
                             </tr>
@@ -423,7 +449,7 @@
                     console.error('Error loading opportunities:', error);
                     opportunitiesTable.innerHTML = `
                         <tr>
-                            <td colspan="3" class="px-6 py-4 text-center text-red-500">
+                            <td colspan="4" class="px-6 py-4 text-center text-red-500">
                                 エラーが発生しました
                             </td>
                         </tr>
@@ -466,7 +492,19 @@
         }
     
         function stopArbitrage() {
-            fetch('/toggle_arbitrage/stop', { method: 'POST' })
+            // ラジオボタンから選択された停止方法を取得
+            const stopOption = document.querySelector('input[name="stopOption"]:checked').value;
+            const forceClose = stopOption === 'close';
+            
+            fetch('/toggle_arbitrage/stop', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    force_close: forceClose
+                })
+            })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
@@ -477,6 +515,9 @@
                         if (!isArbitrageRunning) {
                             updateStatusDisplay(0, "システム停止中");
                         }
+                        
+                        // 成功メッセージを表示
+                        alert(data.message);
                         
                         updateArbitrageStatus();
                     } else {
