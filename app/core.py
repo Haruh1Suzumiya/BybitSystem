@@ -22,6 +22,10 @@ current_position = {
     'fr_change_count': 0
 }
 
+# 固定ペア設定
+FIXED_SPOT_SYMBOL = "ZKJUSDT"
+FIXED_LINEAR_SYMBOL = "ZKJUSDT"
+
 def load_config(config_file='config/config.ini'):
     """設定ファイルを読み込む"""
     config = configparser.ConfigParser()
@@ -97,22 +101,19 @@ def simplify_message(message):
     """ログメッセージを分かりやすく整形"""
     # ポジションオープン
     if "Successfully opened new position:" in message:
-        match = re.search(r"Successfully opened new position: (\w+)/(\w+)", message)
-        if match:
-            return f"🚀 新規ポジション: {match.group(1)}/{match.group(2)}"
+        return f"🚀 新規ポジション: ZKJUSDT"
     
     # 現在のペア情報
     elif "Current pair" in message:
         match = re.search(r"Current pair (\w+)/(\w+) - FR: ([\d.-]+)%, Cumulative FR: ([\d.-]+)%", message)
         if match:
-            symbol = match.group(1)
             fr = float(match.group(3))
             cumulative_fr = float(match.group(4))
-            return f"📊 {symbol}: 現在FR {fr:.4f}%, 累積FR {cumulative_fr:.4f}%"
+            return f"📊 ZKJUSDT: 現在FR {fr:.4f}%, 累積FR {cumulative_fr:.4f}%"
     
-    # ポジションクローズ
+    # ポジションクローズ（実際にはクローズしない）
     elif "Closing current position" in message:
-        return "🔄 ポジションクローズ"
+        return "✅ ポジション維持（FR変動検知）"
     
     # ポジション維持
     elif "Keeping current position" in message:
@@ -134,9 +135,7 @@ def simplify_message(message):
     
     # アービトラージ試行
     elif "Attempting arbitrage:" in message:
-        match = re.search(r"Attempting arbitrage: Spot: (\w+), Futures: (\w+) with FR: ([\d.-]+)%, Cumulative FR: ([\d.-]+)%", message)
-        if match:
-            return f"💡 試行: {match.group(1)}/{match.group(2)}, FR: {match.group(3)}%, 累積FR: {match.group(4)}%"
+        return f"💡 試行: ZKJUSDT"
     
     # 上位候補
     elif "Top opportunities:" in message:
@@ -184,7 +183,7 @@ def calculate_cumulative_fr(session, symbol, days=5):
         return 0
 
 def get_top_arbitrage_opportunities(config, top_n=3):
-    """累積FRが高い上位n個のアービトラージ機会を取得"""
+    """UI用：累積FRが高い上位n個のアービトラージ機会を取得（表示用のみ）"""
     session = get_session(config)
     
     # 現物の銘柄一覧を取得
@@ -248,20 +247,23 @@ def get_top_arbitrage_opportunities(config, top_n=3):
     
     return opportunities
 
-def execute_arbitrage(config, opportunity):
-    """アービトラージを実行"""
+def execute_arbitrage_fixed(config):
+    """固定ペア（ZKJUSDT）でアービトラージを実行"""
     global current_position
     
-    linear_symbol = opportunity['linear_symbol']
-    spot_symbol = opportunity['spot_symbol']
-    current_fr = opportunity['current_fr']
-    cumulative_fr = opportunity['cumulative_fr']
-    spot_info = opportunity['spot_info']
-    linear_info = opportunity['linear_info']
+    linear_symbol = FIXED_LINEAR_SYMBOL
+    spot_symbol = FIXED_SPOT_SYMBOL
     
     session = get_session(config)
     
     try:
+        # 現在のFRを取得
+        futures_ticker = session.get_tickers(category="linear", symbol=linear_symbol)
+        current_fr = float(futures_ticker['result']['list'][0]['fundingRate']) * 100
+        cumulative_fr = calculate_cumulative_fr(session, linear_symbol)
+        
+        log_message(f"Attempting arbitrage: Spot: {spot_symbol}, Futures: {linear_symbol} with FR: {current_fr:.4f}%, Cumulative FR: {cumulative_fr:.4f}%")
+        
         # レバレッジ設定
         try:
             session.set_leverage(
@@ -274,7 +276,6 @@ def execute_arbitrage(config, opportunity):
             log_message(f"Warning: Could not set leverage for {linear_symbol}: {str(e)}")
         
         # 現在の価格を取得
-        futures_ticker = session.get_tickers(category="linear", symbol=linear_symbol)
         spot_ticker = session.get_tickers(category="spot", symbol=spot_symbol)
         futures_price = float(futures_ticker['result']['list'][0]['lastPrice'])
         spot_price = float(spot_ticker['result']['list'][0]['lastPrice'])
@@ -297,6 +298,11 @@ def execute_arbitrage(config, opportunity):
         futures_qty = Decimal(str(trade_amount_per_side)) / Decimal(str(futures_price))
         
         # 先物の注文量情報を取得
+        linear_info = get_instrument_info(session, "linear", linear_symbol)
+        if not linear_info:
+            log_message(f"Failed to get instrument info for {linear_symbol}")
+            return False
+        
         linear_min_order_qty = Decimal(linear_info['lotSizeFilter']['minOrderQty'])
         linear_qty_step = Decimal(linear_info['lotSizeFilter']['qtyStep'])
         
@@ -375,7 +381,7 @@ def execute_arbitrage(config, opportunity):
         max_retry = 3  # 最大再試行回数
         retry_count = 0
         
-        while actual_spot_qty < float(spot_qty) * 0.97 and retry_count < max_retry:  # 5%の許容範囲
+        while actual_spot_qty < float(spot_qty) * 0.97 and retry_count < max_retry:  # 3%の許容範囲
             missing_qty = float(spot_qty) - actual_spot_qty
             if missing_qty > 0:
                 log_message(f"Spot quantity mismatch. Got: {actual_spot_qty}, Expected: {spot_qty}. Placing additional order for {missing_qty}")
@@ -528,7 +534,7 @@ def load_position_from_config(config_file='config/config.ini'):
     
     return False
 
-def close_current_position(config):
+def close_current_position(config, force_close=False):
     """現在のポジションをクローズ"""
     global current_position
     
@@ -536,10 +542,16 @@ def close_current_position(config):
     if not current_position['coin']:
         return True
     
+    # force_close=Falseかつ固定ペアの場合はクローズしない（通常のFR変動時）
+    if not force_close:
+        log_message(f"Closing position triggered for {current_position['linear_symbol']}/{current_position['spot_symbol']} - but maintaining position as per fixed pair strategy")
+        return True
+    
+    # force_close=Trueの場合は実際にクローズする（システム停止時）
     session = get_session(config)
     
     try:
-        log_message(f"Closing position for {current_position['linear_symbol']}/{current_position['spot_symbol']}")
+        log_message(f"Force closing position for {current_position['linear_symbol']}/{current_position['spot_symbol']}")
         
         # すべての注文をキャンセル
         session.cancel_all_orders(category="linear", settleCoin="USDT")
@@ -645,6 +657,7 @@ def close_current_position(config):
         # ポジション情報をconfig.iniから削除
         save_position_to_config(current_position)
         
+        log_message("All positions closed successfully")
         return True
     
     except Exception as e:
@@ -652,7 +665,7 @@ def close_current_position(config):
         return False
 
 def check_current_position(config):
-    """現在のポジションをチェックし、必要に応じてクローズ"""
+    """現在のポジションをチェック（固定ペアでは永続保持）"""
     global current_position
     
     # ポジションがない場合は何もしない
@@ -679,12 +692,8 @@ def check_current_position(config):
             
             log_message(f"Current pair {current_position['linear_symbol']}/{current_position['spot_symbol']} - FR: {new_fr:.4f}%, Cumulative FR: {cumulative_fr:.4f}%")
             
-            # FRが負になったら即座にクローズ
-            if new_fr < 0:
-                log_message(f"Closing current position due to negative FR: {new_fr:.4f}%")
-                close_current_position(config)
-            else:
-                log_message(f"Keeping current position. FR: {new_fr:.4f}%")
+            # 固定ペアでは永続保持（FRがマイナスでもクローズしない）
+            log_message(f"Keeping current position. FR: {new_fr:.4f}% (Fixed pair strategy - permanent hold)")
         else:
             log_message(f"Failed to get funding rate for {current_position['linear_symbol']}")
     
@@ -840,10 +849,10 @@ def get_next_funding_time(config):
     return wait_time, next_funding
 
 def arbitrage_loop(config):
-    """アービトラージループのメイン関数"""
+    """アービトラージループのメイン関数（固定ペア用）"""
     global is_arbitrage_running, current_position
     
-    log_message("Starting arbitrage loop")
+    log_message("Starting arbitrage loop (Fixed ZKJUSDT strategy)")
     
     # 保存されたポジション情報を読み込む
     load_position_from_config()
@@ -869,57 +878,43 @@ def arbitrage_loop(config):
                 current_position['fr_change_count'] += 1
                 # 更新したポジション情報をconfig.iniに保存
                 save_position_to_config(current_position)
-                # ポジションチェック
+                # ポジションチェック（固定ペアでは永続保持）
                 check_current_position(config)
-                
-                # 組み替え後に新しいポジションが開設された場合、ポジションバランスをチェック
-                if current_position['coin'] and current_position['fr_change_count'] == 1:
-                    log_message("New position opened after FR change, checking balance")
-                    check_position_balance(config)
         
-        # ポジションがない場合は新しいポジションを開く
+        # ポジションがない場合は新しいポジションを開く（固定ペア）
         else:
-            # 上位の機会を取得
+            # UI用の演出のため、上位の機会を取得して表示
             opportunities = get_top_arbitrage_opportunities(config, top_n=3)
             
-            if not opportunities:
-                log_message("No viable arbitrage opportunities found")
-            else:
-                # 上位の機会をログ出力
+            if opportunities:
+                # 上位の機会をログ出力（UI演出用）
                 opp_str = ", ".join([
                     f"{o['linear_symbol']} (FR: {o['current_fr']:.4f}%, Cum: {o['cumulative_fr']:.4f}%)"
                     for o in opportunities
                 ])
                 log_message(f"Top opportunities: {opp_str}")
+            
+            # 実際には固定ペア（ZKJUSDT）で実行
+            log_message(f"Attempting arbitrage: Fixed pair ZKJUSDT strategy")
+            
+            if execute_arbitrage_fixed(config):
+                # 初回ポジション作成後にポジションバランスをチェック
+                log_message("Initial position opened, checking balance")
+                check_position_balance(config)
+            else:
+                log_message("Failed to execute arbitrage for ZKJUSDT")
                 
-                # 上位から順に試行
-                executed = False
-                for opp in opportunities:
-                    log_message(f"Attempting arbitrage: Spot: {opp['spot_symbol']}, Futures: {opp['linear_symbol']} with FR: {opp['current_fr']:.4f}%, Cumulative FR: {opp['cumulative_fr']:.4f}%")
-                    
-                    if execute_arbitrage(config, opp):
-                        executed = True
-                        
-                        # 初回ポジション作成後にポジションバランスをチェック
-                        log_message("Initial position opened, checking balance")
-                        check_position_balance(config)
-                        break
+                # 次のFR時間まで待機
+                log_message(f"Waiting for {wait_time:.2f} seconds until next funding time at {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
                 
-                if not executed:
-                    log_message("Failed to execute arbitrage for all opportunities")
-                    
-                    # 次のFR時間まで待機
-                    log_message(f"Waiting for {wait_time:.2f} seconds until next funding time at {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    
-                    # 待機
-                    start_time = time.time()
-                    while time.time() - start_time < wait_time and is_arbitrage_running.is_set():
-                        time.sleep(1)
+                # 待機
+                start_time = time.time()
+                while time.time() - start_time < wait_time and is_arbitrage_running.is_set():
+                    time.sleep(1)
     
-    # ループ終了時にポジションをクローズ
+    # ループ終了時の処理（固定ペアでは通常はクローズしない）
     if current_position['coin']:
-        log_message("Closing position before stopping arbitrage loop")
-        close_current_position(config)
+        log_message("System stopped - maintaining position as per fixed pair strategy")
     
     log_message("Arbitrage loop ended")
 
@@ -932,12 +927,11 @@ def start_arbitrage(config):
         arbitrage_thread = threading.Thread(target=arbitrage_loop, args=(config,))
         arbitrage_thread.daemon = True
         arbitrage_thread.start()
-        log_message("System started")
+        log_message("System started (Fixed ZKJUSDT strategy)")
         return True
     return False
 
-
-def stop_arbitrage():
+def stop_arbitrage(force_close_positions=False):
     """アービトラージを停止"""
     global is_arbitrage_running, arbitrage_thread
     
@@ -945,7 +939,17 @@ def stop_arbitrage():
         is_arbitrage_running.clear()
         if arbitrage_thread and arbitrage_thread.is_alive():
             arbitrage_thread.join(timeout=30)  # 最大30秒待機
-        log_message("System stopped")
+        
+        # force_close_positions=Trueの場合はポジションを強制クローズ
+        if force_close_positions:
+            config = load_config()
+            if close_current_position(config, force_close=True):
+                log_message("System stopped (All positions closed)")
+            else:
+                log_message("System stopped (Warning: Position close failed)")
+        else:
+            log_message("System stopped (Position maintained)")
+        
         return True
     return False
 
