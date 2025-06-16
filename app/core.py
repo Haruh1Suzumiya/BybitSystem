@@ -23,8 +23,8 @@ current_position = {
 }
 
 # 固定ペア設定
-FIXED_SPOT_SYMBOL = "ZKJUSDT"
-FIXED_LINEAR_SYMBOL = "ZKJUSDT"
+FIXED_SPOT_SYMBOL = "APTUSDT"
+FIXED_LINEAR_SYMBOL = "APTUSDT"
 
 def load_config(config_file='config/config.ini'):
     """設定ファイルを読み込む"""
@@ -101,7 +101,7 @@ def simplify_message(message):
     """ログメッセージを分かりやすく整形"""
     # ポジションオープン
     if "Successfully opened new position:" in message:
-        return f"🚀 新規ポジション: ZKJUSDT"
+        return f"🚀 新規ポジション: APTUSDT"
     
     # 現在のペア情報
     elif "Current pair" in message:
@@ -109,7 +109,7 @@ def simplify_message(message):
         if match:
             fr = float(match.group(3))
             cumulative_fr = float(match.group(4))
-            return f"📊 ZKJUSDT: 現在FR {fr:.4f}%, 累積FR {cumulative_fr:.4f}%"
+            return f"📊 APTUSDT: 現在FR {fr:.4f}%, 累積FR {cumulative_fr:.4f}%"
     
     # ポジションクローズ（実際にはクローズしない）
     elif "Closing current position" in message:
@@ -135,7 +135,7 @@ def simplify_message(message):
     
     # アービトラージ試行
     elif "Attempting arbitrage:" in message:
-        return f"💡 試行: ZKJUSDT"
+        return f"💡 試行: APTUSDT"
     
     # 上位候補
     elif "Top opportunities:" in message:
@@ -248,7 +248,7 @@ def get_top_arbitrage_opportunities(config, top_n=3):
     return opportunities
 
 def execute_arbitrage_fixed(config):
-    """固定ペア（ZKJUSDT）でアービトラージを実行"""
+    """固定ペア（APTUSDT）でアービトラージを実行"""
     global current_position
     
     linear_symbol = FIXED_LINEAR_SYMBOL
@@ -852,7 +852,7 @@ def arbitrage_loop(config):
     """アービトラージループのメイン関数（固定ペア用）"""
     global is_arbitrage_running, current_position
     
-    log_message("Starting arbitrage loop (Fixed ZKJUSDT strategy)")
+    log_message("Starting arbitrage loop (Fixed APTUSDT strategy)")
     
     # 保存されたポジション情報を読み込む
     load_position_from_config()
@@ -894,15 +894,15 @@ def arbitrage_loop(config):
                 ])
                 log_message(f"Top opportunities: {opp_str}")
             
-            # 実際には固定ペア（ZKJUSDT）で実行
-            log_message(f"Attempting arbitrage: Fixed pair ZKJUSDT strategy")
+            # 実際には固定ペア（APTUSDT）で実行
+            log_message(f"Attempting arbitrage: Fixed pair APTUSDT strategy")
             
             if execute_arbitrage_fixed(config):
                 # 初回ポジション作成後にポジションバランスをチェック
                 log_message("Initial position opened, checking balance")
                 check_position_balance(config)
             else:
-                log_message("Failed to execute arbitrage for ZKJUSDT")
+                log_message("Failed to execute arbitrage for APTUSDT")
                 
                 # 次のFR時間まで待機
                 log_message(f"Waiting for {wait_time:.2f} seconds until next funding time at {next_fr_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -927,7 +927,7 @@ def start_arbitrage(config):
         arbitrage_thread = threading.Thread(target=arbitrage_loop, args=(config,))
         arbitrage_thread.daemon = True
         arbitrage_thread.start()
-        log_message("System started (Fixed ZKJUSDT strategy)")
+        log_message("System started (Fixed APTUSDT strategy)")
         return True
     return False
 
