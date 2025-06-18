@@ -78,7 +78,7 @@ def toggle_arbitrage(action):
     
     if action == 'start':
         if core.start_arbitrage(config):
-            return jsonify({'success': True, 'is_running': True, 'message': 'システムを開始しました（固定ペア: APTUSDT）'})
+            return jsonify({'success': True, 'is_running': True, 'message': 'システムを開始しました（固定ペア: ROSEUSDT）'})
         else:
             return jsonify({'success': False, 'message': '既に実行中です'})
     elif action == 'stop':
@@ -106,15 +106,15 @@ def arbitrage_status():
     position_info = {
         'has_position': bool(core.current_position['coin']),
         'coin': core.current_position['coin'],
-        'linear_symbol': core.current_position['linear_symbol'] or 'APTUSDT',  # 固定表示
-        'spot_symbol': core.current_position['spot_symbol'] or 'APTUSDT',      # 固定表示
+        'linear_symbol': core.current_position['linear_symbol'] or 'ROSEUSDT',  # 固定表示
+        'spot_symbol': core.current_position['spot_symbol'] or 'ROSEUSDT',      # 固定表示
         'fr': core.current_position['fr'],
         'fr_change_count': core.current_position['fr_change_count']
     }
     
     return jsonify({
         'is_running': core.is_arbitrage_running.is_set(),
-        'status': '実行中（固定ペア: APTUSDT）' if core.is_arbitrage_running.is_set() else '停止中',
+        'status': '実行中（固定ペア: ROSEUSDT）' if core.is_arbitrage_running.is_set() else '停止中',
         'logs': latest_logs,
         'position': position_info
     })
@@ -127,41 +127,41 @@ def get_top_opportunities():
         # UI演出用に実際の機会を取得するが、実行は固定ペア
         opportunities = core.get_top_arbitrage_opportunities(config, top_n=5)
         
-        # APTUSDT を最上位に強制表示
-        apt_opportunity = None
+        # ROSEUSDT を最上位に強制表示
+        rose_opportunity = None
         other_opportunities = []
         
         for opp in opportunities:
-            if opp['linear_symbol'] == 'APTUSDT':
-                apt_opportunity = opp
+            if opp['linear_symbol'] == 'ROSEUSDT':
+                rose_opportunity = opp
             else:
                 other_opportunities.append(opp)
         
-        # APTUSDT が見つからない場合は、ダミーデータを作成
-        if not apt_opportunity:
+        # ROSEUSDT が見つからない場合は、ダミーデータを作成
+        if not rose_opportunity:
             session = core.get_session(config)
             try:
-                ticker = session.get_tickers(category="linear", symbol="APTUSDT")
+                ticker = session.get_tickers(category="linear", symbol="ROSEUSDT")
                 current_fr = float(ticker['result']['list'][0]['fundingRate']) * 100
-                cumulative_fr = core.calculate_cumulative_fr(session, "APTUSDT")
+                cumulative_fr = core.calculate_cumulative_fr(session, "ROSEUSDT")
                 
-                apt_opportunity = {
-                    'linear_symbol': 'APTUSDT',
-                    'spot_symbol': 'APTUSDT',
+                rose_opportunity = {
+                    'linear_symbol': 'ROSEUSDT',
+                    'spot_symbol': 'ROSEUSDT',
                     'current_fr': current_fr,
                     'cumulative_fr': cumulative_fr
                 }
             except:
                 # エラーの場合はダミーデータ
-                apt_opportunity = {
-                    'linear_symbol': 'APTUSDT',
-                    'spot_symbol': 'APTUSDT',
+                rose_opportunity = {
+                    'linear_symbol': 'ROSEUSDT',
+                    'spot_symbol': 'ROSEUSDT',
                     'current_fr': 0.0100,  # 0.01%
                     'cumulative_fr': 0.5000  # 0.5%
                 }
         
-        # APTUSDT を最上位に配置
-        final_opportunities = [apt_opportunity] + other_opportunities[:4]
+        # ROSEUSDT を最上位に配置
+        final_opportunities = [rose_opportunity] + other_opportunities[:4]
         
         return jsonify({
             'success': True,
@@ -176,12 +176,12 @@ def get_top_opportunities():
             ]
         })
     except Exception as e:
-        # エラーの場合はAPTUSDTのみ返す
+        # エラーの場合はROSEUSDTのみ返す
         return jsonify({
             'success': True,
             'opportunities': [{
-                'linear_symbol': 'APTUSDT',
-                'spot_symbol': 'APTUSDT',
+                'linear_symbol': 'ROSEUSDT',
+                'spot_symbol': 'ROSEUSDT',
                 'current_fr': 0.0100,
                 'cumulative_fr': 0.5000
             }]
