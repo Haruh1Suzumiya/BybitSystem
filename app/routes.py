@@ -186,3 +186,104 @@ def get_top_opportunities():
                 'cumulative_fr': 0.5000
             }]
         })
+
+# 新規追加：清算監視関連のエンドポイント
+@main_bp.route('/get_liquidation_info')
+def get_liquidation_info():
+    """現在のポジションの清算情報を取得"""
+    config = current_app.config
+    try:
+        liquidation_info = core.get_current_liquidation_info(config)
+        return jsonify({
+            'success': True,
+            'liquidation_info': liquidation_info
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@main_bp.route('/check_liquidation_risk')
+def check_liquidation_risk():
+    """清算リスクをチェック"""
+    config = current_app.config
+    try:
+        is_at_risk, liq_info = core.check_liquidation_risk(config)
+        
+        result = {
+            'success': True,
+            'is_at_risk': is_at_risk,
+            'liquidation_info': liq_info
+        }
+        
+        if liq_info:
+            safety_ratio = float(config['LIQUIDATION'].get('safety_ratio', '0.15'))
+            result['safety_threshold'] = safety_ratio * 100  # パーセント表示
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@main_bp.route('/manual_rebalance', methods=['POST'])
+def manual_rebalance():
+    """手動でのリバランス実行"""
+    config = current_app.config
+    try:
+        success, message = core.manual_emergency_rebalance(config)
+        return jsonify({
+            'success': success,
+            'message': message
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'リバランス実行中にエラーが発生しました: {str(e)}'
+        })
+
+@main_bp.route('/get_liquidation_settings')
+def get_liquidation_settings():
+    """清算監視設定を取得"""
+    config = current_app.config
+    return jsonify({
+        'success': True,
+        'settings': {
+            'monitor_interval': int(config['LIQUIDATION'].get('monitor_interval', '3600')),
+            'safety_ratio': float(config['LIQUIDATION'].get('safety_ratio', '0.15')),
+            'auto_rebalance': config['LIQUIDATION'].get('auto_rebalance', 'true').lower() == 'true'
+        }
+    })
+
+@main_bp.route('/update_liquidation_settings', methods=['POST'])
+def update_liquidation_settings():
+    """清算監視設定を更新"""
+    data = request.json
+    config = core.load_config()
+    
+    try:
+        # 設定を更新
+        if 'monitor_interval' in data:
+            config['LIQUIDATION']['monitor_interval'] = str(int(data['monitor_interval']))
+        if 'safety_ratio' in data:
+            config['LIQUIDATION']['safety_ratio'] = str(float(data['safety_ratio']))
+        if 'auto_rebalance' in data:
+            config['LIQUIDATION']['auto_rebalance'] = str(data['auto_rebalance']).lower()
+        
+        # 設定を保存
+        core.save_config(config)
+        
+        # アプリケーション設定を更新
+        current_app.config.update(config)
+        
+        return jsonify({
+            'success': True,
+            'message': '清算監視設定を更新しました'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })

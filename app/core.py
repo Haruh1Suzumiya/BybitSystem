@@ -73,13 +73,13 @@ def load_config(config_file='config/config.ini'):
     return config
 
 def setup_logging(log_level):
-    """ロギング設定"""
+    """ロギング設定 - Windows対応"""
     logging.basicConfig(
         level=getattr(logging, log_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('app.log')
+            logging.FileHandler('app.log', encoding='utf-8')  # UTF-8エンコーディング指定
         ]
     )
 
@@ -93,19 +93,28 @@ def get_session(config):
     )
 
 def log_message(message):
-    """ログメッセージを記録"""
+    """ログメッセージを記録 - 特殊文字を安全な文字に置換"""
     global logs
-    print(f"LOG: {message}")
-    logging.info(message)
+    
+    # 特殊文字を安全な文字に置換
+    safe_message = message.replace('→', '->')
+    
+    print(f"LOG: {safe_message}")
+    try:
+        logging.info(safe_message)
+    except UnicodeEncodeError:
+        # フォールバック：ASCII文字のみでログ出力
+        ascii_message = safe_message.encode('ascii', 'ignore').decode('ascii')
+        logging.info(ascii_message)
     
     # ログをシンプル化して保存
-    simplified_message = simplify_message(message)
+    simplified_message = simplify_message(safe_message)
     if simplified_message:
         logs.append(simplified_message)
         if len(logs) > 100:
             logs.pop(0)
     else:
-        logs.append(message)
+        logs.append(safe_message)
         if len(logs) > 100:
             logs.pop(0)
 
@@ -277,16 +286,23 @@ def emergency_rebalance(config):
     if close_current_position(config, force_close=True):
         log_message("Emergency rebalance: Old position closed successfully")
         
-        # 少し待機して残高が安定するのを待つ
-        time.sleep(5)
+        # 残高が安定するまで少し待機
+        time.sleep(10)  # 10秒に延長
         
-        # 新しいポジションを建て直し
-        if execute_arbitrage_fixed(config):
-            log_message("Position rebuilt successfully after emergency rebalance")
-            return True
-        else:
-            log_message("Failed to rebuild position after emergency rebalance")
-            return False
+        # 新しいポジションを建て直し（最大3回試行）
+        for attempt in range(3):
+            log_message(f"Emergency rebalance: Attempt {attempt + 1} to rebuild position")
+            
+            if execute_arbitrage_fixed(config):
+                log_message("Position rebuilt successfully after emergency rebalance")
+                return True
+            else:
+                log_message(f"Failed to rebuild position - attempt {attempt + 1}")
+                if attempt < 2:  # 最後の試行でない場合は待機
+                    time.sleep(5)
+        
+        log_message("Failed to rebuild position after emergency rebalance")
+        return False
     else:
         log_message("Failed to close position during emergency rebalance")
         return False
@@ -403,8 +419,16 @@ def get_top_arbitrage_opportunities(config, top_n=3):
     
     return opportunities
 
+def round_to_precision(value, precision):
+    """指定された精度で値を丸める"""
+    if precision == 0:
+        return int(value)
+    else:
+        multiplier = 10 ** precision
+        return round(value * multiplier) / multiplier
+
 def execute_arbitrage_fixed(config):
-    """固定ペア（ROSEUSDT）でアービトラージを実行"""
+    """固定ペア（ROSEUSDT）でアービトラージを実行 - 精度エラー修正版"""
     global current_position
     
     linear_symbol = FIXED_LINEAR_SYMBOL
@@ -420,7 +444,7 @@ def execute_arbitrage_fixed(config):
         
         log_message(f"Attempting arbitrage: Spot: {spot_symbol}, Futures: {linear_symbol} with FR: {current_fr:.4f}%, Cumulative FR: {cumulative_fr:.4f}%")
         
-        # レバレッジ設定
+        # レバレッジ設定（エラーが出ても続行）
         try:
             session.set_leverage(
                 category="linear",
@@ -449,8 +473,8 @@ def execute_arbitrage_fixed(config):
         
         log_message(f"Current USDT balance: {usdt_balance:.2f}")
         
-        # 取引額を決定 (残高の35%ずつを使用、合計70%まで - 手数料等を考慮)
-        trade_amount_per_side = usdt_balance * 0.35
+        # 取引額を決定 (残高の40%ずつを使用、合計80%まで)
+        trade_amount_per_side = usdt_balance * 0.40
         
         # 最小取引額チェック
         min_trade_amount = 20.0  # 最小20 USDT
@@ -478,8 +502,9 @@ def execute_arbitrage_fixed(config):
         
         log_message(f"Futures quantity: {futures_qty}")
         
-        # 現物の注文量を計算（USDT金額ベース）
+        # 現物の注文量を計算（USDT金額ベース）- 精度を2桁に制限
         spot_order_value = float(futures_qty) * spot_price
+        spot_order_value = round_to_precision(spot_order_value, 2)  # 2桁まで丸める
         
         # 最小注文価値チェック
         min_order_value = 10.0
@@ -492,13 +517,13 @@ def execute_arbitrage_fixed(config):
         # 注文実行順序を変更：現物を先に実行
         log_message(f"Placing spot buy order first for {spot_symbol}")
         
-        # 現物買い注文（金額指定）
+        # 現物買い注文（金額指定）- 精度を明示的に制限
         spot_order = session.place_order(
             category="spot",
             symbol=spot_symbol,
             side="Buy",
             orderType="Market",
-            qty=str(spot_order_value),  # 金額指定
+            qty=f"{spot_order_value:.2f}",  # 小数点2桁に制限
             isLeverage=0  # 現物取引
         )
         
@@ -577,7 +602,7 @@ def execute_arbitrage_fixed(config):
 def save_position_to_config(position, config_file='config/config.ini'):
     """ポジション情報をconfigに保存"""
     config = configparser.ConfigParser()
-    config.read(config_file)
+    config.read(config_file, encoding='utf-8')  # UTF-8エンコーディング指定
     
     if 'POSITION' not in config:
         config['POSITION'] = {}
@@ -597,7 +622,7 @@ def save_position_to_config(position, config_file='config/config.ini'):
         for key in ['coin', 'qty', 'linear_symbol', 'spot_symbol', 'fr', 'entry_time', 'fr_change_count', 'entry_price', 'liquidation_price']:
             config['POSITION'][key] = ''
     
-    with open(config_file, 'w') as configfile:
+    with open(config_file, 'w', encoding='utf-8') as configfile:  # UTF-8エンコーディング指定
         config.write(configfile)
 
 def load_position_from_config(config_file='config/config.ini'):
@@ -605,7 +630,7 @@ def load_position_from_config(config_file='config/config.ini'):
     global current_position
     
     config = configparser.ConfigParser()
-    config.read(config_file)
+    config.read(config_file, encoding='utf-8')  # UTF-8エンコーディング指定
     
     if 'POSITION' in config:
         if config['POSITION'].get('coin', ''):
@@ -642,8 +667,11 @@ def close_current_position(config, force_close=False):
         log_message(f"Force closing position for {current_position['linear_symbol']}/{current_position['spot_symbol']}")
         
         # すべての注文をキャンセル
-        session.cancel_all_orders(category="linear", settleCoin="USDT")
-        session.cancel_all_orders(category="spot", settleCoin="USDT")
+        try:
+            session.cancel_all_orders(category="linear", settleCoin="USDT")
+            session.cancel_all_orders(category="spot", settleCoin="USDT")
+        except Exception as e:
+            log_message(f"Warning: Could not cancel all orders: {str(e)}")
         
         # 先物ポジションを確認してクローズ
         futures_positions = session.get_positions(
@@ -983,7 +1011,7 @@ def is_api_configured(config):
 
 def save_config(config, config_file='config/config.ini'):
     """設定を保存"""
-    with open(config_file, 'w') as configfile:
+    with open(config_file, 'w', encoding='utf-8') as configfile:  # UTF-8エンコーディング指定
         config.write(configfile)
 
 def get_wallet_balance(config, coin="USDT"):

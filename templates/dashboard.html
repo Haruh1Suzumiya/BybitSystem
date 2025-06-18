@@ -62,6 +62,25 @@
             background: linear-gradient(45deg, #fef3c7, #fde68a);
             border: 2px solid #f59e0b;
         }
+        .liquidation-safe {
+            background: linear-gradient(45deg, #dcfce7, #bbf7d0);
+            border: 2px solid #22c55e;
+        }
+        .liquidation-warning {
+            background: linear-gradient(45deg, #fef3c7, #fde68a);
+            border: 2px solid #f59e0b;
+        }
+        .liquidation-danger {
+            background: linear-gradient(45deg, #fee2e2, #fecaca);
+            border: 2px solid #ef4444;
+        }
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -113,8 +132,62 @@
                         <span class="font-semibold" id="frChangeCount">-</span>
                     </div>
                     <div class="text-center mt-2">
-                        <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">永続保持</span>
+                        <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">安定保持</span>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 清算監視パネル -->
+        <div class="bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card" id="liquidationPanel">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">清算監視</h2>
+                <div class="flex items-center space-x-4">
+                    <span id="liquidationStatus" class="px-3 py-1 rounded-full text-white bg-gray-500 status-indicator">監視中</span>
+                    <button id="manualRebalanceBtn" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition duration-200 disabled:opacity-50" disabled>
+                        手動リバランス
+                    </button>
+                </div>
+            </div>
+            
+            <div id="noLiquidationData" class="text-center text-gray-500 py-6">
+                <p>ポジションなし - 清算監視は無効</p>
+            </div>
+            
+            <div id="liquidationData" class="hidden">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">現在価格</p>
+                        <p class="text-lg font-bold" id="markPrice">-</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">清算価格</p>
+                        <p class="text-lg font-bold" id="liquidationPrice">-</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">安全距離</p>
+                        <p class="text-lg font-bold" id="liquidationDistance">-</p>
+                    </div>
+                </div>
+                
+                <!-- 清算リスクメーター -->
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm text-gray-600 mb-2">
+                        <span>清算リスク</span>
+                        <span id="riskPercentage">-</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-4">
+                        <div id="riskMeter" class="bg-green-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>安全</span>
+                        <span>危険</span>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">含み損益:</span>
+                    <span class="font-semibold" id="unrealizedPnl">-</span>
                 </div>
             </div>
         </div>
@@ -240,6 +313,43 @@
         </div>
     </div>
 
+    <!-- リバランス確認モーダル -->
+    <div id="rebalanceConfirmationModal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="rebalance-modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 sm:mx-0 sm:h-10 sm:w-10">
+                            <svg class="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="rebalance-modal-title">
+                                手動リバランスを実行しますか？
+                            </h3>
+                            <div class="mt-2">
+                                <p class="text-sm text-gray-500">
+                                    この操作により、現在のポジションがクローズされ、新しいポジションが作成されます。処理には数秒かかる場合があります。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" id="confirmRebalance" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-yellow-600 text-base font-medium text-white hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        実行
+                    </button>
+                    <button type="button" id="cancelRebalance" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        キャンセル
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const toggleArbitrageButton = document.getElementById('toggleArbitrage');
         const arbitrageStatus = document.getElementById('arbitrageStatus');
@@ -257,6 +367,22 @@
         const positionFRElement = document.getElementById('positionFR');
         const frChangeCountElement = document.getElementById('frChangeCount');
         const statusMessageElement = document.getElementById('statusMessage');
+        
+        // 清算監視関連の要素
+        const liquidationPanel = document.getElementById('liquidationPanel');
+        const liquidationStatus = document.getElementById('liquidationStatus');
+        const manualRebalanceBtn = document.getElementById('manualRebalanceBtn');
+        const noLiquidationData = document.getElementById('noLiquidationData');
+        const liquidationData = document.getElementById('liquidationData');
+        const markPrice = document.getElementById('markPrice');
+        const liquidationPrice = document.getElementById('liquidationPrice');
+        const liquidationDistance = document.getElementById('liquidationDistance');
+        const riskPercentage = document.getElementById('riskPercentage');
+        const riskMeter = document.getElementById('riskMeter');
+        const unrealizedPnl = document.getElementById('unrealizedPnl');
+        const rebalanceConfirmationModal = document.getElementById('rebalanceConfirmationModal');
+        const confirmRebalanceButton = document.getElementById('confirmRebalance');
+        const cancelRebalanceButton = document.getElementById('cancelRebalance');
         
         // ステータスステップの要素
         const step1 = document.getElementById('step1');
@@ -308,6 +434,69 @@
             
             // ステータスメッセージを更新
             statusMessageElement.textContent = message;
+        }
+
+        // 清算監視データを更新する関数
+        function updateLiquidationData() {
+            if (!isArbitrageRunning) return;
+            
+            fetch('/get_liquidation_info')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.liquidation_info) {
+                        const info = data.liquidation_info;
+                        
+                        if (info.has_position && info.liquidation_price) {
+                            // ポジションありの場合
+                            noLiquidationData.classList.add('hidden');
+                            liquidationData.classList.remove('hidden');
+                            manualRebalanceBtn.disabled = false;
+                            
+                            // データを表示
+                            markPrice.textContent = `$${info.mark_price.toFixed(4)}`;
+                            liquidationPrice.textContent = `$${info.liquidation_price.toFixed(4)}`;
+                            liquidationDistance.textContent = `${info.distance_percent.toFixed(2)}%`;
+                            riskPercentage.textContent = `${(100 - info.distance_percent).toFixed(1)}%`;
+                            unrealizedPnl.textContent = `$${info.unrealized_pnl.toFixed(2)}`;
+                            
+                            // リスクメーターを更新
+                            const riskLevel = 100 - info.distance_percent;
+                            riskMeter.style.width = `${Math.min(riskLevel, 100)}%`;
+                            
+                            // リスクレベルに応じて色を変更
+                            if (info.distance_percent > 20) {
+                                // 安全
+                                riskMeter.className = 'bg-green-500 h-4 rounded-full transition-all duration-500';
+                                liquidationStatus.textContent = '安全';
+                                liquidationStatus.className = 'px-3 py-1 rounded-full text-white bg-green-500 status-indicator';
+                                liquidationPanel.className = 'bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card liquidation-safe';
+                            } else if (info.distance_percent > 10) {
+                                // 警告
+                                riskMeter.className = 'bg-yellow-500 h-4 rounded-full transition-all duration-500';
+                                liquidationStatus.textContent = '注意';
+                                liquidationStatus.className = 'px-3 py-1 rounded-full text-white bg-yellow-500 status-indicator';
+                                liquidationPanel.className = 'bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card liquidation-warning pulse-animation';
+                            } else {
+                                // 危険
+                                riskMeter.className = 'bg-red-500 h-4 rounded-full transition-all duration-500';
+                                liquidationStatus.textContent = '危険';
+                                liquidationStatus.className = 'px-3 py-1 rounded-full text-white bg-red-500 status-indicator';
+                                liquidationPanel.className = 'bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card liquidation-danger pulse-animation';
+                            }
+                        } else {
+                            // ポジションなしの場合
+                            noLiquidationData.classList.remove('hidden');
+                            liquidationData.classList.add('hidden');
+                            manualRebalanceBtn.disabled = true;
+                            liquidationStatus.textContent = '監視停止';
+                            liquidationStatus.className = 'px-3 py-1 rounded-full text-white bg-gray-500 status-indicator';
+                            liquidationPanel.className = 'bg-white shadow-lg rounded-lg px-6 pt-6 pb-6 mb-8 card';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating liquidation data:', error);
+                });
         }
     
         function updateUSDTBalance() {
@@ -391,6 +580,9 @@
                     
                     // ポジション情報を更新
                     updatePositionInfo(data.position);
+                    
+                    // 清算監視データを更新
+                    updateLiquidationData();
                 })
                 .catch(error => {
                     console.error('Error updating arbitrage status:', error);
@@ -463,6 +655,39 @@
     
         function hideStopConfirmationModal() {
             stopConfirmationModal.classList.add('hidden');
+        }
+
+        function showRebalanceConfirmationModal() {
+            rebalanceConfirmationModal.classList.remove('hidden');
+        }
+
+        function hideRebalanceConfirmationModal() {
+            rebalanceConfirmationModal.classList.add('hidden');
+        }
+
+        function executeManualRebalance() {
+            manualRebalanceBtn.disabled = true;
+            manualRebalanceBtn.textContent = '実行中...';
+            
+            fetch('/manual_rebalance', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('リバランスが正常に完了しました: ' + data.message);
+                        updateArbitrageStatus();
+                        updateUSDTBalance();
+                    } else {
+                        alert('リバランスに失敗しました: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error executing manual rebalance:', error);
+                    alert('リバランス実行中にエラーが発生しました');
+                })
+                .finally(() => {
+                    manualRebalanceBtn.disabled = false;
+                    manualRebalanceBtn.textContent = '手動リバランス';
+                });
         }
     
         function startArbitrage() {
@@ -549,6 +774,22 @@
             hideStopConfirmationModal();
             toggleArbitrageButton.checked = true;
         });
+
+        // リバランス関連のイベントリスナー
+        manualRebalanceBtn.addEventListener('click', function() {
+            if (!this.disabled) {
+                showRebalanceConfirmationModal();
+            }
+        });
+
+        confirmRebalanceButton.addEventListener('click', function() {
+            hideRebalanceConfirmationModal();
+            executeManualRebalance();
+        });
+
+        cancelRebalanceButton.addEventListener('click', function() {
+            hideRebalanceConfirmationModal();
+        });
         
         refreshOpportunitiesButton.addEventListener('click', function() {
             loadOpportunities();
@@ -558,12 +799,14 @@
         setInterval(updateUSDTBalance, 60000);  // 1分ごとにUSDT残高を更新
         setInterval(updateArbitrageStatus, 5000);  // 5秒ごとにステータスを更新
         setInterval(loadOpportunities, 300000);  // 5分ごとに機会リストを更新
+        setInterval(updateLiquidationData, 10000);  // 10秒ごとに清算監視データを更新
     
         // 初期処理
         document.addEventListener('DOMContentLoaded', function() {
             updateArbitrageStatus();
             updateUSDTBalance();
             loadOpportunities();
+            updateLiquidationData();
             updateStatusDisplay(0, "システム停止中");
         });
     </script>
